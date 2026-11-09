@@ -1,0 +1,53 @@
+﻿# 策划岗位通用｜话术。只维护正文，不重复岗位条件。
+# 原文话术以index.html为准；新增或修订话术单独标注为草稿。
+schema_version: 1
+job_id: game-execution-planner
+variables: [TEST_LINK, EMAIL, NAME, REASON, MSG, MISSING_FIELDS]
+messages:
+  S1:
+    audience: candidate
+    status: source_document
+    text: >-
+      你好，我们公司是一家手游研发公司，08年成立，目前人员规模已达到700+，上线运营及在研项目10余个，包含slg、卡牌rpg、小游戏多种类型，风格多样，比如欧美卡通、国风写实、二次元等等。福利完善，团队氛围好。我们有一个游戏经历调查问卷，你有空做吗？
+  S3:
+    audience: candidate
+    status: source_document
+    text: |-
+      这是笔试链接：{TEST_LINK}
+
+      做完后请将该问卷和你的简历一起发到我的邮箱，邮箱地址：{EMAIL}
+  S4:
+    audience: candidate
+    status: proposed_revision
+    text: >-
+      感谢您的关注～这个岗位目前要求{REASON}，根据您提供的信息暂时未能匹配，暂时无法继续推进。祝求职顺利！
+    note: 原文固定以专业不符婉拒，现改成实际未满足条件，避免学历不符却错误归因于专业
+  S5:
+    audience: internal
+    status: source_document
+    text: '【转人工】候选人 {NAME}｜岗位：策划（具体职位见候选人记录）｜原因：{REASON}｜最近消息：{MSG}'
+  S6:
+    audience: candidate
+    status: proposed_revision
+    text: >-
+      您好！方便补充一下{MISSING_FIELDS}吗？简单一两句话就可以。如果愿意，也可以介绍平时玩得比较深的游戏。
+    note: 只问尚未获得的学历、专业或策划意向；游戏经历可选。共用一次补问次数
+  S6_INTENT:
+    audience: candidate
+    status: proposed_revision
+    text: 您好，想确认一下，您目前是否希望从事游戏策划工作？
+    note: 仅缺策划意向时使用，仍占用同一个补问次数
+  S7:
+    audience: candidate
+    status: source_document
+    text: 简历先不用发到聊天里哦～请您完成游戏经历调查问卷后，将问卷和您的简历一起发送到邮箱 {EMAIL} 即可。
+  DECLINE_TEST:
+    audience: candidate
+    status: proposed_addition
+    text: 好的，感谢您的回复，这边不再跟进问卷，祝您求职顺利！
+    note: 原文要求礼貌收尾但未提供正文；明确拒绝后才使用
+  S7_BEFORE_TEST:
+    audience: candidate
+    status: proposed_addition
+    text: 简历暂时不用在聊天里发送。如后续进入问卷环节，我们会提供链接，请届时将完成的问卷和简历一起发送到邮箱 {EMAIL}。
+    note: 初筛前或尚未确认发题时使用，不代表筛选通过，不跳过意愿确认

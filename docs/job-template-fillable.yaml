@@ -1,0 +1,360 @@
+﻿# 历史教学参考：当前游戏执行策划业务配置请编辑 config/jobs/game-execution-planner.yaml。
+# 本文件的Unity、经验、薪资和评分示例不适用于游戏执行策划。
+# 岗位模板填写表 v0.2｜已填示例：Unity 游戏客户端程序
+# 阅读方法：# 后面是解释；冒号右侧是你需要修改的值。
+# 本文件是一份完整的教学示例，并非已核验的 BOSS 职位详情。
+# 示例公司、成都、15–25K、2年经验等均是假设，请按实际需求修改。
+# 本项目目前尚未实现模板执行器；填写不会触发聊天、筛选或试题发送。
+# true=是，false=否；null=尚无真实值；[]=没有条目；短横线表示一条记录。
+# required=必须尽力收集；hard_gate=岗位硬条件，两者不是同一个含义。
+# 缺失或拒答都不等于不合格；证据不足交给负责人判断。
+
+# ────────────────────────────────────────────────────────────
+# 一、岗位身份与版本｜填写岗位名称、别名、版本和招聘优先级。
+# ────────────────────────────────────────────────────────────
+job_id: unity-client-example # 岗位内部代号；同一岗位修改时保持不变
+job_name: Unity游戏客户端程序（教学示例） # 对外展示的岗位名称
+aliases: [Unity客户端开发, Unity3D客户端开发] # 同义名称；不要把 UE/C++ 当作同义岗位
+version: 1 # 修改要求后递增；历史候选人保留原版本
+status: draft # draft=草稿；approved=负责人确认；retired=停用。此示例保持 draft
+priority: high # urgent/high/normal/low：招聘处理优先级，不是候选人评分
+# ────────────────────────────────────────────────────────────
+# 二、招聘条件的来源｜说明这些要求从哪里获得，是否已核对真实职位详情。
+# ────────────────────────────────────────────────────────────
+posting_evidence:
+  source: inferred # inferred=示例推定；recruiter_input=负责人提供；boss_job_detail=已读取职位详情
+  observed_at: null # 尚未读取职位详情；读取后填写带时区时间，例如 2026-11-03T10:00:00+08:00
+  note: 只观察到“客户端程序”名称；以下假设为 Unity 手游方向，全部等待负责人确认 # 来源补充说明
+
+# ────────────────────────────────────────────────────────────
+# 三、公司与岗位介绍｜填写对外可介绍的工作内容、地点、薪资和工作方式。
+# ────────────────────────────────────────────────────────────
+intro:
+  company_name: 示例游戏工作室（非真实公司名称） # 公司名称
+  location: 成都（教学假设，实际办公地址尚未确认） # 工作城市或办公地址
+  work_mode: onsite # onsite=现场办公；hybrid=混合；remote=远程；unknown=未确认
+  employment_type: full_time # full_time=全职；part_time=兼职；intern=实习；contract=项目合同
+  salary_range: 税前月薪15–25K，年薪结构另行确认（教学假设） # 薪资范围与计薪口径
+  working_hours: 未确认，候选人询问时由招聘负责人答复 # 工作时间及相关政策
+  company_intro: 示例为研发移动端游戏的小型团队，招聘人员参与客户端功能开发和版本迭代（非真实公司介绍） # 公司业务和团队简介
+  responsibilities: # 用人方希望入职后完成的工作，不是对候选人的提问
+    - 使用 Unity 和 C# 开发游戏功能、UI交互与客户端业务逻辑
+    - 与策划、美术及服务端协作，完成配置接入、联调和版本交付
+    - 定位并修复性能、内存、资源加载和运行稳定性问题
+    - 维护代码、技术文档和必要的开发工具
+
+# 必备能力：每条要写清“满足标准”和“接受什么证据”。
+# 即使 hard_gate=true，明确不满足时也只提交人工复核，不自动拒绝候选人。
+# ────────────────────────────────────────────────────────────
+# 四、必备条件与核实规则｜逐项说明能力标准、证据来源和未知/冲突时的处理。
+# ────────────────────────────────────────────────────────────
+hard_requirements:
+  - id: unity_csharp # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    label: Unity与C#项目实践 # 便于阅读的中文名称
+    type: text # number=数字；enum=选项；boolean=是/否；text=文字；url=网址
+    required: true # 要收集这个信息；不等于候选人必须回答“有”
+    criterion: 能独立完成Unity项目中的一个功能模块，并说明C#实现、调试与联调过程 # 判断该项是否满足的具体标准
+    accepted_evidence: [resume, chat, portfolio] # resume=简历；chat=聊天；portfolio=作品材料
+    hard_gate: true # 此教学岗位假定Unity/C#为必要技能；批准前不执行
+    unknown_action: ask_once_then_human_review # 缺信息补问一次，仍无法确认则人工复核
+    conflict_action: human_review # 简历与聊天冲突，交给人工
+    notes: 不能只根据“熟悉Unity”四个字判定满足；记录本人负责内容 # 该条规则的补充说明与例外
+  - id: project_ownership # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    label: 独立模块交付经历 # 便于阅读的中文名称
+    type: text # 期望保存的数据类型
+    required: true # true=需要收集；false=可选；未提供不等于不合格
+    criterion: 至少说明一个从需求理解、实现到测试交付的模块，能区分个人与团队贡献 # 判断该项是否满足的具体标准
+    accepted_evidence: [resume, chat, portfolio] # 可接受的信息来源：简历、聊天或作品
+    hard_gate: true # 是否属于岗位硬条件；不能确认时转人工，不直接淘汰
+    unknown_action: ask_once_then_human_review # 缺失信息时如何处理：补问一次后交人工
+    conflict_action: human_review # 不同来源信息冲突时交人工核对
+    notes: 不强制商业上线；个人完整项目可提供能力证据，是否足够由负责人判断 # 该条规则的补充说明与例外
+  - id: relevant_years # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    label: 相关开发经验 # 便于阅读的中文名称
+    type: number # 期望保存的数据类型
+    required: true # true=需要收集；false=可选；未提供不等于不合格
+    criterion: 示例期望2年左右或以上Unity实际开发经验；能力证据充分者人工评估 # 判断该项是否满足的具体标准
+    accepted_evidence: [resume, chat] # 可接受的信息来源：简历、聊天或作品
+    hard_gate: false # 年限是偏好，不是自动淘汰线
+    unknown_action: ask_once_then_human_review # 缺失信息时如何处理：补问一次后交人工
+    conflict_action: human_review # 不同来源信息冲突时交人工核对
+    notes: 记录相关经验而非总工作年限；不足2年不自动淘汰 # 该条规则的补充说明与例外
+
+# ────────────────────────────────────────────────────────────
+# 五、加分项｜说明哪些经验更受欢迎，以及各项在加分维度中的相对权重。
+# ────────────────────────────────────────────────────────────
+preferred_requirements:
+  - id: performance_case # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    label: 性能定位与优化 # 便于阅读的中文名称
+    type: text # 期望保存的数据类型
+    criterion: 能描述工具、瓶颈、改动、测量环境和优化前后结果 # 判断该项是否满足的具体标准
+    weight: 60 # 此处两个权重合计100，只用于“加分项”维度内部，不额外叠加到总分
+    accepted_evidence: [resume, chat, portfolio] # 可接受的信息来源：简历、聊天或作品
+    notes: 没有公开指标可用脱敏描述；没提供信息属于未知 # 该条规则的补充说明与例外
+  - id: asset_pipeline # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    label: 资源与工具流程 # 便于阅读的中文名称
+    type: text # 期望保存的数据类型
+    criterion: 实际使用过资源管理、打包或编辑器工具，并说明解决的问题 # 判断该项是否满足的具体标准
+    weight: 40 # 该加分项在加分维度内的权重
+    accepted_evidence: [resume, chat, portfolio] # 可接受的信息来源：简历、聊天或作品
+    notes: Addressables等只是示例工具，不要求命中特定关键词 # 该条规则的补充说明与例外
+
+# 先从简历抽取这些信息；example_answer为虚构的候选人答案，仅说明保存粒度。
+# ────────────────────────────────────────────────────────────
+# 六、简历信息采集｜定义要从简历提取什么，并用答案示例说明详细程度。
+# ────────────────────────────────────────────────────────────
+resume_fields:
+  - id: current_role # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    label: 当前或最近岗位 # 便于阅读的中文名称
+    required: true # true=需要收集；false=可选；未提供不等于不合格
+    extraction: resume_or_chat # 优先简历，没有再问
+    example_answer: Unity客户端开发，负责玩法与UI模块 # 虚构答案示例，用来说明应收集到什么程度
+  - id: relevant_years # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    label: Unity相关经验年限 # 便于阅读的中文名称
+    required: true # true=需要收集；false=可选；未提供不等于不合格
+    extraction: resume_or_chat # 采集来源：resume=简历；resume_or_chat=简历或聊天；含portfolio时也可用作品
+    example_answer: Unity项目实践3年；总工作经验5年 # 虚构答案示例，用来说明应收集到什么程度
+  - id: project_ownership # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    label: 代表项目与个人负责范围 # 便于阅读的中文名称
+    required: true # true=需要收集；false=可选；未提供不等于不合格
+    extraction: resume_or_portfolio_or_chat # 采集来源：resume=简历；resume_or_chat=简历或聊天；含portfolio时也可用作品
+    example_answer: 一款移动端RPG已上线；本人负责背包、任务和UI交互，未负责战斗系统 # 虚构答案示例，用来说明应收集到什么程度
+  - id: unity_csharp # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    label: 引擎、语言与实际使用 # 便于阅读的中文名称
+    required: true # true=需要收集；false=可选；未提供不等于不合格
+    extraction: resume_or_chat # 采集来源：resume=简历；resume_or_chat=简历或聊天；含portfolio时也可用作品
+    example_answer: Unity 2021 LTS与C#，开发背包模块并与服务端联调 # 虚构答案示例，用来说明应收集到什么程度
+  - id: performance_case # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    label: 性能案例 # 便于阅读的中文名称
+    required: false # true=需要收集；false=可选；未提供不等于不合格
+    extraction: resume_or_chat # 采集来源：resume=简历；resume_or_chat=简历或聊天；含portfolio时也可用作品
+    example_answer: 使用Profiler定位UI频繁重建；优化后同设备测试帧耗时下降（候选人自述） # 虚构答案示例，用来说明应收集到什么程度
+  - id: portfolio_url # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    label: 公开作品或项目链接 # 便于阅读的中文名称
+    required: false # true=需要收集；false=可选；未提供不等于不合格
+    extraction: resume_or_chat # 采集来源：resume=简历；resume_or_chat=简历或聊天；含portfolio时也可用作品
+    example_answer: 候选人暂不方便提供公开链接，记录为未提供，允许继续流程 # 虚构答案示例，用来说明应收集到什么程度
+  - id: education # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    label: 教育背景 # 便于阅读的中文名称
+    required: false # true=需要收集；false=可选；未提供不等于不合格
+    extraction: resume # 采集来源：resume=简历；resume_or_chat=简历或聊天；含portfolio时也可用作品
+    example_answer: 计算机相关专业本科（虚构示例） # 虚构答案示例，用来说明应收集到什么程度
+    use_for_rejection: false # 本示例不以学历或院校自动淘汰
+
+# 所有问题都是供你评审的话术草稿，不会发送。
+# target_field 指向需要补齐的字段；ask_when说明何时问。
+# evidence_required=true 表示保存答案的出处，不是要求对方提供证明文件。
+# ────────────────────────────────────────────────────────────
+# 七、聊天补充问题｜定义缺什么信息时问什么；已有答案时避免重复询问。
+# ────────────────────────────────────────────────────────────
+chat_questions:
+  - id: q_role # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    target_field: target_role # 这道问题要补齐的候选人信息字段
+    label: 目标岗位 # 便于阅读的中文名称
+    required: true # true=需要收集；false=可选；未提供不等于不合格
+    ask_when: 目标岗位不明确或与列表岗位冲突时 # 满足什么条件时才需要问
+    ask_prompt: 你希望继续了解Unity客户端开发这个方向吗？ # 拟向候选人提出的问题文字
+    answer_type: text # 答案格式：text=文字；number_or_text=数字或文字；range_or_text=范围或文字
+    evidence_required: true # 是否保存答案出处；不是要求候选人提交证明文件
+    repeat_if_answered: false # 已有明确答案时是否重复问；false=不重复
+  - id: q_stack # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    target_field: unity_csharp # 这道问题要补齐的候选人信息字段
+    label: Unity与C#实践 # 便于阅读的中文名称
+    required: true # true=需要收集；false=可选；未提供不等于不合格
+    ask_when: 简历没有说明引擎语言及实际负责内容时 # 满足什么条件时才需要问
+    ask_prompt: 能介绍一下你最近使用Unity和C#开发的一个功能模块吗？ # 拟向候选人提出的问题文字
+    answer_type: text # 答案格式：text=文字；number_or_text=数字或文字；range_or_text=范围或文字
+    evidence_required: true # 是否保存答案出处；不是要求候选人提交证明文件
+    repeat_if_answered: false # 已有明确答案时是否重复问；false=不重复
+  - id: q_experience # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    target_field: relevant_years # 这道问题要补齐的候选人信息字段
+    label: 相关年限 # 便于阅读的中文名称
+    required: true # true=需要收集；false=可选；未提供不等于不合格
+    ask_when: 无法从简历时间线确认Unity经验时 # 满足什么条件时才需要问
+    ask_prompt: 你实际参与Unity项目开发大约多长时间了？ # 拟向候选人提出的问题文字
+    answer_type: number_or_text # 如“2年半”，保留原话并可另存2.5年
+    evidence_required: true # 是否保存答案出处；不是要求候选人提交证明文件
+    repeat_if_answered: false # 已有明确答案时是否重复问；false=不重复
+  - id: q_project # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    target_field: project_ownership # 这道问题要补齐的候选人信息字段
+    label: 项目职责与交付 # 便于阅读的中文名称
+    required: true # true=需要收集；false=可选；未提供不等于不合格
+    ask_when: 简历只描述团队成绩，没有个人责任边界时 # 满足什么条件时才需要问
+    ask_prompt: 这个项目中你独立负责的模块是什么，最后交付到什么阶段？ # 拟向候选人提出的问题文字
+    answer_type: text # 答案格式：text=文字；number_or_text=数字或文字；range_or_text=范围或文字
+    evidence_required: true # 是否保存答案出处；不是要求候选人提交证明文件
+    repeat_if_answered: false # 已有明确答案时是否重复问；false=不重复
+  - id: q_location # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    target_field: location_acceptance # 这道问题要补齐的候选人信息字段
+    label: 工作地点接受度 # 便于阅读的中文名称
+    required: true # true=需要收集；false=可选；未提供不等于不合格
+    ask_when: 公司地点已确认且候选人意愿未知时；不得使用未经确认的示例城市 # 满足什么条件时才需要问
+    ask_prompt: 这个岗位的办公地点是【负责人确认的地点】，你是否方便到岗办公？ # 拟向候选人提出的问题文字
+    answer_type: text # 答案格式：text=文字；number_or_text=数字或文字；range_or_text=范围或文字
+    evidence_required: true # 是否保存答案出处；不是要求候选人提交证明文件
+    repeat_if_answered: false # 已有明确答案时是否重复问；false=不重复
+  - id: q_availability # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    target_field: availability # 这道问题要补齐的候选人信息字段
+    label: 到岗时间 # 便于阅读的中文名称
+    required: true # true=需要收集；false=可选；未提供不等于不合格
+    ask_when: 尚无明确到岗周期时 # 满足什么条件时才需要问
+    ask_prompt: 如果双方合适，预计多久可以到岗？ # 拟向候选人提出的问题文字
+    answer_type: text # 答案格式：text=文字；number_or_text=数字或文字；range_or_text=范围或文字
+    evidence_required: true # 是否保存答案出处；不是要求候选人提交证明文件
+    repeat_if_answered: false # 已有明确答案时是否重复问；false=不重复
+  - id: q_salary # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    target_field: expected_salary # 这道问题要补齐的候选人信息字段
+    label: 期望薪资 # 便于阅读的中文名称
+    required: true # true=需要收集；false=可选；未提供不等于不合格
+    ask_when: 尚无薪资期望或单位不明确时；不追问历史工资 # 满足什么条件时才需要问
+    ask_prompt: 方便了解一下你期望的税前月薪范围吗？ # 拟向候选人提出的问题文字
+    answer_type: range_or_text # 答案格式：text=文字；number_or_text=数字或文字；range_or_text=范围或文字
+    evidence_required: true # 是否保存答案出处；不是要求候选人提交证明文件
+    repeat_if_answered: false # 已有明确答案时是否重复问；false=不重复
+    sensitive: compensation # 薪资信息，仅用于招聘匹配；协商转人工
+  - id: q_performance # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    target_field: performance_case # 这道问题要补齐的候选人信息字段
+    label: 性能优化案例 # 便于阅读的中文名称
+    required: false # true=需要收集；false=可选；未提供不等于不合格
+    ask_when: 必填信息已清楚，候选人愿意补充且没有现成案例时 # 满足什么条件时才需要问
+    ask_prompt: 你有没有处理过Unity性能问题？可以简要介绍一个定位和优化案例。 # 拟向候选人提出的问题文字
+    answer_type: text # 答案格式：text=文字；number_or_text=数字或文字；range_or_text=范围或文字
+    evidence_required: true # 是否保存答案出处；不是要求候选人提交证明文件
+    repeat_if_answered: false # 已有明确答案时是否重复问；false=不重复
+  - id: q_questions # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    target_field: candidate_questions # 这道问题要补齐的候选人信息字段
+    label: 候选人关心的问题 # 便于阅读的中文名称
+    required: false # true=需要收集；false=可选；未提供不等于不合格
+    ask_when: 候选人愿意继续了解岗位时 # 满足什么条件时才需要问
+    ask_prompt: 关于岗位或招聘流程，你还有哪些想了解的问题？ # 拟向候选人提出的问题文字
+    answer_type: text # 答案格式：text=文字；number_or_text=数字或文字；range_or_text=范围或文字
+    evidence_required: true # 是否保存答案出处；不是要求候选人提交证明文件
+    repeat_if_answered: false # 已有明确答案时是否重复问；false=不重复
+
+# ────────────────────────────────────────────────────────────
+# 八、可选信息｜尽量了解但不强制提供；缺失不阻塞后续流程。
+# ────────────────────────────────────────────────────────────
+optional_information:
+  - id: collaboration # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    label: 协作方式 # 便于阅读的中文名称
+    example_answer: 与2名策划和服务端同事协作，使用任务看板与代码评审 # 虚构答案示例，用来说明应收集到什么程度
+  - id: asset_pipeline # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    label: 资源管理与工具 # 便于阅读的中文名称
+    example_answer: 用Addressables管理UI资源，写过资源引用检查工具 # 虚构答案示例，用来说明应收集到什么程度
+  - id: portfolio_url # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    label: 公开作品材料 # 便于阅读的中文名称
+    example_answer: 可提供个人项目视频；没有公开源码也允许继续 # 虚构答案示例，用来说明应收集到什么程度
+  - id: career_interest # 该条规则、字段或问题的内部代号；同一列表内不能重复
+    label: 发展方向 # 便于阅读的中文名称
+    example_answer: 希望继续做游戏业务逻辑，逐步深入性能优化 # 虚构答案示例，用来说明应收集到什么程度
+
+# 下面是待讨论的评分设计，执行器尚未实现；不是已经校准的筛选模型。
+# ────────────────────────────────────────────────────────────
+# 九、评分方案｜设置各能力维度、评分档位与参考阈值；当前保持关闭。
+# ────────────────────────────────────────────────────────────
+scoring:
+  enabled: false # 是否启用本段功能；false=关闭
+  weights: # 总计100；每个维度0至4档，再按“档位/4×权重”折算
+    core_skill: 35 # 核心技能维度权重
+    project_ownership: 35 # 项目独立负责与交付维度权重
+    debugging_method: 20 # 问题定位与解决方法维度权重
+    preferred_skills: 10 # 内部分配用上方 preferred_requirements 的60/40比例
+  rubric: # 评分档位说明
+    unknown: 未取得足够信息；不等于0分，不输出最终总分 # 信息不足时的评分处理
+    level_0: 候选人明确表示没有相关实践 # 0档：明确无相关实践
+    level_1: 有基础认知或在他人指导下参与 # 1档：基础或辅助参与
+    level_2: 能说明独立完成的常规模块及实现过程 # 2档：独立完成常规模块
+    level_3: 能说明复杂问题、方案取舍与验证方法 # 3档：解决复杂问题并验证
+    level_4: 有多次可复述的完整案例、结果验证与复盘 # 4档：多次完成、验证并复盘
+  thresholds: # 后续建议动作的分数阈值
+    test_ready: 75 # 教学建议值：只产生试题审核建议，不自动发送
+    human_review_below: 65 # 低于65人工看证据；65至74待定；不自动拒绝
+  missing_field_policy: unknown_not_zero # 缺失信息的处理：保留未知，不当作零分
+  conflict_policy: human_review # 证据矛盾时人工复核
+  logistics_policy: 地点、薪资、到岗单独显示匹配状态，不混入技术分；不匹配或未知交人工 # 地点、薪资、到岗意愿如何参与判断
+  calibration: 负责人使用历史脱敏样本复核后，才决定是否启用及调整阈值 # 正式启用评分前如何校准
+
+# ────────────────────────────────────────────────────────────
+# 十、线上试题｜配置发题前提、题目、作答时间、提交期限和提醒。
+# ────────────────────────────────────────────────────────────
+online_test:
+  enabled: false # 没有真实题目和审核结果，必须关闭
+  trigger: 已确认岗位和模板，必填信息已收集，无未解决冲突，候选人同意，负责人批准 # 可以进入试题流程的前提
+  title: Unity背包交互与问题分析题（题型建议，并非已制作的试题） # 试题名称
+  url: null # 将来填公司实际试题平台链接；null表示当前没有可发送链接
+  expected_effort_minutes: 60 # 实际作答工作量建议；不同于提交期限
+  deadline_hours: 48 # 从确认发送成功起计算提交窗口；不是要求连续做48小时
+  reminder_after_hours: 24 # 发送成功后经过多少小时可提醒；已完成则不提醒
+  max_reminders: 1 # 最多提醒一次；同意参与后才允许提醒
+  manual_approval_required: true # 是否需要人工批准；true=需要
+  assessment_focus: [功能正确性, 代码组织, 边界处理, 解释与验证方法] # 评价试题时关注的能力
+  ai_usage_policy: 待负责人确定并提前告知候选人；不能事后改变评价口径 # 候选人使用AI工具的规则
+  result_source: 试题平台回执或负责人记录；候选人说已完成仅记为自述 # 哪些信息可以用来确认试题结果
+
+# ────────────────────────────────────────────────────────────
+# 十一、人工接管｜列明遇到哪些问题要暂停当前候选人的自动流程。
+# ────────────────────────────────────────────────────────────
+human_handoff:
+  always: # 以下情况均应转人工处理
+    - 薪资谈判、福利、合同、试用期、加班或录用承诺
+    - 候选人投诉、要求停止沟通、删除或更正信息
+    - 简历与聊天冲突，或岗位、候选人身份不能确认
+    - 必填信息补问后仍未知或候选人不愿回答
+    - 候选人问题没有经过批准的标准答案
+    - 页面验证、账号切换或页面异常
+  on_unknown_answer: pause_and_notify # 暂停当前候选人自动流程，生成待人工事项
+  on_sensitive_topic: pause_and_notify # 敏感或需负责人解释的话题：暂停并通知
+
+# 标准答复库也填了示例。每条 status=draft，尚不能对外使用。
+# role/company等是分类；question是匹配问题；answer是负责人拟定的答复内容。
+# ────────────────────────────────────────────────────────────
+# 十二、标准答复库｜按公司、岗位、流程、福利分类维护答复；草稿不能对外使用。
+# ────────────────────────────────────────────────────────────
+approved_answers:
+  company: # 公司介绍类问题
+    - question: 公司主要做什么产品？ # 候选人可能提出的问题
+      answer: 我们是一支研发移动端游戏的团队，具体项目由招聘负责人进一步介绍。（教学示例） # 对应的答复草稿
+      status: draft # 此条答复状态；draft=待审核，不能直接使用
+      source: fictional_example # 此条答复来源；fictional_example=虚构示例；proposed_handoff_wording=拟定的转人工话术
+  role: # 岗位职责类问题
+    - question: 岗位主要负责什么？ # 候选人可能提出的问题
+      answer: 主要参与Unity客户端功能开发、联调和性能问题处理。（教学示例） # 对应的答复草稿
+      status: draft # 此条答复状态；draft=待审核，不能直接使用
+      source: fictional_example # 此条答复来源；fictional_example=虚构示例；proposed_handoff_wording=拟定的转人工话术
+  process: # 招聘流程类问题
+    - question: 面试流程是什么？ # 候选人可能提出的问题
+      answer: 示例流程为资料沟通、经同意后完成技术题、技术面试和负责人面谈；真实流程尚待确认。 # 对应的答复草稿
+      status: draft # 此条答复状态；draft=待审核，不能直接使用
+      source: fictional_example # 此条答复来源；fictional_example=虚构示例；proposed_handoff_wording=拟定的转人工话术
+  benefits: # 福利及劳动条件类问题
+    - question: 加班、福利和试用期如何安排？ # 候选人可能提出的问题
+      answer: 这部分需要由招聘负责人准确说明，我会记录你的问题交给负责人。 # 对应的答复草稿
+      status: draft # 此条答复状态；draft=待审核，不能直接使用
+      source: proposed_handoff_wording # 此条答复来源；fictional_example=虚构示例；proposed_handoff_wording=拟定的转人工话术
+
+# ────────────────────────────────────────────────────────────
+# 十三、负责人审核｜记录谁负责、谁批准、何时批准和修改原因。
+# ────────────────────────────────────────────────────────────
+review:
+  owner: 招聘负责人（请替换为实际姓名或职务） # 负责维护这份模板的人
+  approved_by: null # 谁批准；只有真实批准后才能填写，不把生成示例算作批准
+  approved_at: null # 真实批准时间，带时区
+  change_note: 2026-11-03将空模板改为完整教学示例；未核验BOSS职位详情，未启用执行 # 本次修改内容与原因
+
+# 以下是“采集结果长什么样”的教学附录，不是招聘条件，也不是真实候选人记录。
+# source/confidence/status属于候选人证据，不能与上面的模板status混为一谈。
+# ────────────────────────────────────────────────────────────
+# 十四、候选人采集结果示例｜展示最终保存的证据结构；不是岗位要求。
+# ────────────────────────────────────────────────────────────
+example_candidate_observation:
+  fictional: true # true表示这是一条虚构示例记录
+  field_id: relevant_years # 该答案对应的采集字段
+  value: 做Unity大概两年半 # 保留候选人原始表述
+  normalized_value: 2.5 # 便于计算的标准化值
+  unit: years # 标准化值的单位；years=年
+  source: chat # 证据来源；chat=聊天，resume=简历，portfolio=作品
+  evidence: 做Unity大概两年半，之前一年做的是其他开发。 # 支持该字段的原始证据文字
+  source_message_local_ids: [example_message_001] # 证据来自哪些本地消息记录
+  confidence: 0.95 # 提取“2.5年”的把握，不是候选人能力分，也不证明自述真实
+  status: confirmed # confirmed=明确自述；inferred=推断；unknown=缺失；conflict=来源冲突
+  external_verification: not_performed # 未做外部核验

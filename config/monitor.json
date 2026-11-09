@@ -1,0 +1,32 @@
+{
+  "_说明": "第一阶段：第二招聘账号、策划岗位、最多三人。只监听、记录和生成草稿；发送功能尚未接入。",
+  "profile": "company-2",
+  "expectedAccountDisplayName": "汪女士",
+  "_账号说明": "专用浏览器配置隔离账号；显示名仅辅助校验，不能替代平台唯一账号 ID。",
+  "acceptedTitles": ["游戏执行策划", "数值策划", "资深数值策划"],
+  "maxConversations": 3,
+  "_范围说明": "首次启动以当前列表为基线，不批量处理旧消息。导入已测试会话；以后只纳入新增或变化的策划会话。",
+  "tickMs": 2000,
+  "debounceMs": 5000,
+  "reconcileMs": 180000,
+  "_监听说明": "每两秒检查网页观察器，十秒回退读取，三分钟复核当前列表窗口。虚拟列表未显示的会话暂不能保证覆盖。",
+  "mode": "observe_and_draft",
+  "allowSend": false,
+  "allowInterview": false,
+  "allowAssessment": false,
+  "communication": {
+    "_说明": "使用自然简洁的招聘口吻，先回应已知信息；不主动介绍为 AI、机器人或招聘助手，不编造真人身份。被直接问身份时如实回答。",
+    "style": "natural_conversational",
+    "proactive_automation_introduction": false,
+    "truthful_identity_when_asked": true
+  },
+  "rulesFile": "config/jobs/game-execution-planner.yaml",
+  "model": {
+    "_说明": "待公司接口提供后确认兼容协议；密钥只从环境变量读取。不在此文件填写密钥。",
+    "protocol": "openai-compatible",
+    "enabled": false,
+    "baseUrlEnv": "BOSS_MODEL_BASE_URL",
+    "modelEnv": "BOSS_MODEL_NAME",
+    "apiKeyEnv": "BOSS_MODEL_API_KEY"
+  }
+}

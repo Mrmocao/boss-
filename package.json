@@ -1,0 +1,32 @@
+{
+  "name": "boss-recruiting-copilot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "login": "node src/cli.mjs login",
+    "doctor": "node src/cli.mjs doctor",
+    "status": "node src/cli.mjs status",
+    "company:doctor": "node src/cli.mjs doctor --profile company",
+    "company:login": "node src/cli.mjs login --profile company",
+    "company:status": "node src/cli.mjs status --profile company",
+    "company:collect": "node src/cli.mjs collect --profile company",
+    "company2:doctor": "node src/cli.mjs doctor --profile company-2",
+    "company2:login": "node src/cli.mjs login --profile company-2",
+    "company2:status": "node src/cli.mjs status --profile company-2",
+    "company2:collect": "node src/cli.mjs collect --profile company-2",
+    "browsers": "node src/browser-registry-cli.mjs list",
+    "browser:bind": "node src/browser-registry-cli.mjs bind",
+    "monitor:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-monitor.ps1",
+    "monitor:run": "node src/monitor-daemon.mjs run",
+    "monitor:status": "node src/monitor-daemon.mjs status",
+    "monitor:pause": "node src/monitor-daemon.mjs pause",
+    "monitor:resume": "node src/monitor-daemon.mjs resume",
+    "monitor:stop": "node src/monitor-daemon.mjs stop",
+    "monitor:takeover": "node src/monitor-daemon.mjs takeover",
+    "monitor:resume-conversation": "node src/monitor-daemon.mjs resume-conversation",
+    "monitor:retry-model": "node src/monitor-daemon.mjs retry-model",
+    "test": "node --test"
+  }
+}

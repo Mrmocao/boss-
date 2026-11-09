@@ -1,0 +1,187 @@
+﻿# 策划岗位通用｜业务配置。只在此文件改岗位条件，话术集中在 messages_file。
+schema_version: 1
+job:
+  id: game-execution-planner
+  name: 游戏执行策划
+  version: 3
+  status: review_pending # draft=编辑中；review_pending=尚有待确认项；approved=业务已确认
+  source: index.html # 用户提供的v3业务文档，非本次从BOSS读取的职位详情
+  updated_on: '2026-11-06'
+  messages_file: config/messages/game-execution-planner.yaml
+  platform_binding: # 用户确认的职位范围；网页职位ID仍待真实读取，本段不代表已实现自动路由
+    relationship: shared_planning_workflow
+    expected_title: 游戏执行策划 # 原始规则来源职位，不用于覆盖候选人的真实职位名称
+    accepted_titles: [游戏执行策划, 数值策划, 资深数值策划]
+    excluded_titles: [客户端程序]
+    matching: exact_list_title # 仅当前明确列出的策划岗位；其他名称先人工确认
+    shared_sections: [screening, collection, workflow, attachments, questionnaire]
+    preserve_original_job_context: true
+    other_posting_requirements: human_review # 该岗位其他资历要求不在通用初筛内；初筛通过不等于达到全部任职条件
+    platform_job_id: null
+    sample_status: planning_conversations_observed
+    confirmation_source: user_confirmation_2026_11_06_planning_shared
+    ambiguous_match_action: human_review
+
+# 一、岗位事实：保留原文，不自行补全税前/税后、发薪月数或工作制度。
+offer:
+  applies_to_title: 游戏执行策划 # 本段薪资/级别仅来自原职位，其他策划岗位不继承
+  other_titles_policy: read_posting_or_human_review
+  city: 成都
+  salary_text: 3-5k
+  salary_basis: null
+  level: 初级
+  accept_fresh_graduates: true
+  experience_required: false
+
+# 二、执行边界：本配置尚未接入浏览器执行器；现阶段只读、生成草稿。
+execution:
+  mode: read_only
+  send_messages: false
+  reject_attachment_requests: false
+  read_mailbox: false
+  required_capabilities: [online_education_read, conversation_identity, message_receipt, attachment_card_action, persistent_workflow]
+  verified_capabilities: [] # 当前列表读取不能代替上面这些能力的验收
+
+# 三、资料采集：同一信息只定义一次；筛选规则通过field引用。
+information:
+  education_records: {name: 教育经历中的学历及在读阶段, required: true}
+  major: {name: 与学历对应的专业名称, required: true}
+  planning_intent: {name: 明确的游戏策划求职意向, required: true}
+  deep_games: {name: 熟悉的游戏及理解, required: false}
+  art_portfolio: {name: 美术背景或作品集, required: false}
+  analysis_experience: {name: 竞品分析、配置表维护或数据整理, required: false}
+  company_games: {name: 是否玩过公司产品, required: false}
+collection:
+  sources: [boss_online_profile, pasted_resume_text, greeting, clarification_reply]
+  attachment_source: review_pending # 原文既要求拒收又允许作为信息源，等待确认
+  save_evidence: true # 保存原文、来源定位、观察时间和提取状态
+  skip_answered: true
+  clarification_limit: 1 # 全部缺失硬条件共用一次补问，不是每个字段一次
+  clarification_message: S6
+  clarification_intent_message: S6_INTENT
+  incomplete_reply: human_review # 已回复但未答全，不再重复补问，也不当作明确不符合
+  conflicting_evidence: human_review # 来源优先级不能覆盖互相冲突的证据
+
+# 四、初筛：没有总分。所有硬条件通过才可征询问卷意愿。
+screening:
+  mode: all_required
+  experience_gate: false # H3：无经验要求
+  optional_affects_result: false
+  rules:
+    - id: H1
+      field: education_records
+      criterion: 本科及以上，接受应届和本科大四在读
+      accepted_levels: [本科, 硕士, 博士]
+      accepted_undergraduate_study_years: [4]
+      education_matching: same_record_bachelor_or_above # 用户确认：同一条本科及以上经历学历与专业同时符合即可
+      multiple_records: any_matching_record # 本科非白名单但硕士符合可通过，不限定本科专业
+      missing_pairing: human_review # 不能把不同教育经历的学历与专业拼接；无法配对则人工核实
+    - id: H2
+      field: major
+      criterion: 专业在白名单内通过；明确语言、艺术、管理、法学类不通过；边界或无法归类转人工
+      whitelist:
+        computer: [计算机科学与技术, 软件工程, 网络工程, 信息安全, 物联网工程, 数据科学与大数据技术, 人工智能]
+        mathematics: [数学与应用数学, 信息与计算科学, 统计学, 应用统计学, 金融数学]
+        engineering: [电子信息工程, 通信工程, 信息工程, 电子信息科学与技术, 电子科学与技术, 微电子科学与工程, 光电信息科学与工程, 自动化]
+      explicit_excluded_categories: [语言, 艺术, 管理, 法学]
+      classification_order: [exact_whitelist, confirmed_excluded_category, human_review]
+      outside_whitelist: human_review # 不等于自动否决；不得用模糊关键词推断专业类别
+    - id: H4
+      field: planning_intent
+      criterion: 资料或回复明确表达游戏策划求职意向；单纯咨询本岗位不算
+      active_inquiry_is_evidence: false
+      past_experience_alone_sufficient: false
+      source: user_confirmation_2026_11_05
+  outcomes:
+    passed: invite_questionnaire
+    explicit_unmet: rejection_draft # 按原文形成S4；当前不发送
+    missing: clarify_once
+    ambiguous: human_review
+    conflict: human_review
+
+# 五、流程与计时：计时从相应消息“发送成功回执”开始，不能从草稿生成时开始。
+workflow:
+  trigger: candidate_initiated_contact_for_this_job
+  priority: [identity_or_platform_error, human_takeover, sensitive_or_abnormal, terminal_state, attachment_request, screening_or_reply]
+  initial_state: screening
+  states: [screening, clarification_pending, waiting_clarification, consent_pending, waiting_consent, test_pending, waiting_email, rejection_pending, rejected_screening, decline_pending, declined_test, lost, human_review, do_not_contact, submission_incomplete, awaiting_review]
+  terminal_states: [rejected_screening, declined_test, lost, do_not_contact]
+  terminal_policy:
+    candidate_messages: none
+    attachment_rejection_states: [rejected_screening, declined_test] # 按原文婉拒后仍可拒收附件，但不发S7
+    other_terminal_attachment: human_review
+    do_not_contact: pause_all_actions
+  consent_message: S1
+  test_message: S3
+  rejection_message: S4
+  refusal_message: DECLINE_TEST
+  handoff_message: S5
+  timer_start: confirmed_message_receipt
+  timeouts:
+    clarification_hours: 48
+    consent_hours: 72
+    submitted_test_hours: null # 已发问卷后不限期，不自动标记流失
+  timeout_outcomes: {waiting_clarification: lost, waiting_consent: lost}
+  reminders: 0
+  consent:
+    positive: explicit_agreement_in_reply_to_S1 # “好的”必须是在回答当前问卷意愿问题
+    negative: explicit_refusal
+    temporary_busy: human_review # “明天有空”等不直接解释为拒绝
+    ambiguous: human_review
+  transitions: # event表示确认过的事件；*_confirmed表示发送回执成功，不是“已生成草稿”
+    - {from: screening, event: missing_first_time, to: clarification_pending}
+    - {from: clarification_pending, event: S6_or_S6_INTENT_confirmed, to: waiting_clarification}
+    - {from: waiting_clarification, event: complete_reply, to: screening}
+    - {from: waiting_clarification, event: incomplete_reply, to: human_review}
+    - {from: waiting_clarification, event: refused_to_clarify, to: lost}
+    - {from: screening, event: all_rules_pass, to: consent_pending}
+    - {from: consent_pending, event: S1_confirmed, to: waiting_consent}
+    - {from: screening, event: explicit_rule_unmet, to: rejection_pending}
+    - {from: rejection_pending, event: S4_confirmed, to: rejected_screening}
+    - {from: waiting_consent, event: explicit_agreement, to: test_pending}
+    - {from: waiting_consent, event: explicit_refusal, to: decline_pending}
+    - {from: decline_pending, event: DECLINE_TEST_confirmed, to: declined_test}
+    - {from: test_pending, event: S3_confirmed, to: waiting_email}
+    - {from: waiting_email, event: matched_partial_receipt, to: submission_incomplete}
+    - {from: waiting_email, event: matched_complete_receipt, to: awaiting_review}
+    - {from: submission_incomplete, event: matched_complete_receipt, to: awaiting_review}
+  late_or_terminal_reply: human_review # 保留历史，不悄悄重开或重复发题
+  refusal_to_clarify: lost
+  human_takeover_pauses_actions_and_timers: true
+  resume_after_handoff: manual_with_saved_state
+
+# 六、附件：以下为目标规则，不是本轮操作授权；实际开关在execution。
+attachments:
+  requested_action: reject_request
+  actual_file_already_visible: human_review
+  guidance_message: S7
+  before_test_guidance_message: S7_BEFORE_TEST # 未发题时避免让候选人误以为已收到问卷
+  terminal_guidance: none
+  handoff_behavior: pause_all_actions
+  return_to_previous_state: true # 拒收附件事件不能跳过初筛或当作问卷同意
+  deduplicate_by: attachment_request_id
+  policy_status: review_pending
+
+# 七、问卷和邮箱：缺少固定链接时只保存待发意图，禁止发占位链接。
+questionnaire:
+  name: 游戏经历调查问卷
+  format: Excel
+  fixed_url: null
+  link_status: missing # 原文提及临时地址约2026-11-07过期，但未给出可使用的实际链接
+  deadline_hours: null
+  reminders: 0
+  collection_email: hr-rpg@youkia.net
+  required_files: [questionnaire, resume]
+  receipt_mode: manual_confirmation_pending # 暂按人工登记方案设计，尚未接入邮箱
+  matching: candidate_identity_plus_job_plus_send_event
+  chat_claim_is_receipt: false
+  partial_files_state: submission_incomplete
+  complete_files_state: awaiting_review
+  notify_on_complete: local_handoff_record # 先生成本地待办；通知通道待确定，不假装已经通知
+
+# 八、待确认项：有未解决项目就不能视为可自动执行。
+open_questions:
+  - {id: education_pairing, status: resolved, question: 学历与专业应如何对应多条教育经历？, answer: 同一条本科及以上教育经历的专业符合即可；大四在读也接受, source: user_confirmation_2026_11_05}
+  - {id: attachment_source, status: pending, question: 是否拒收新附件且不解析旧附件，仅使用可见的粘贴文字？}
+  - {id: fixed_url, status: pending, question: 固定问卷链接是什么？}
+  - {id: mailbox_receipt, status: pending, question: 是否先由人工确认收件并关联候选人？}
