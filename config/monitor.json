@@ -14,6 +14,18 @@
   "allowSend": false,
   "allowInterview": false,
   "allowAssessment": false,
+  "workflowPolicy": {
+    "_说明": "业务目标流程；当前后台仍是监听/草稿模式，未开启自动对外动作。",
+    "candidateTrigger": "主动沟通本职位",
+    "silentProfileRead": true,
+    "hardScreenFields": ["education_records", "major", "planning_intent"],
+    "passSequence": ["S1", "explicit_questionnaire_consent", "S3"],
+    "requireConsentBeforeTest": true,
+    "missingSequence": ["S6", "return_to_screening"],
+    "attachmentSequence": ["reject_attachment", "S7"],
+    "abnormalSequence": ["S5", "human_review"],
+    "emailCompletion": ["questionnaire", "resume", "hr-rpg@youkia.net", "awaiting_review", "human_notification"]
+  },
   "communication": {
     "_说明": "使用自然简洁的招聘口吻，先回应已知信息；不主动介绍为 AI、机器人或招聘助手，不编造真人身份。被直接问身份时如实回答。",
     "style": "natural_conversational",

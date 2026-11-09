@@ -100,6 +100,18 @@ screening:
     conflict: human_review
 
 # 五、流程与计时：计时从相应消息“发送成功回执”开始，不能从草稿生成时开始。
+flow_policy:
+  _说明: 用户确认的业务顺序。execution 仍决定当前技术开关；本段描述目标流程，不代表当前后台已自动发送。
+  candidate_trigger: 主动沟通本职位
+  silent_profile_read: true # 先读取 BOSS 在线资料中的教育经历，不向候选人发送筛选提示
+  hard_screen_fields: [education_records, major, planning_intent] # 学历/阶段、专业、明确策划意向
+  missing_hard_information: S6 # 只追问一次：学历、专业、明确意向，可附带常玩游戏
+  pass_sequence: [S1, explicit_questionnaire_consent, S3]
+  pass_requires_consent: true # 硬条件通过后先介绍公司并询问是否愿做问卷；不同意不发 S3
+  fail_sequence: S4
+  attachment_sequence: [reject_attachment, S7]
+  abnormal_sequence: S5
+  email_completion: [questionnaire, resume, hr-rpg@youkia.net, awaiting_review, human_notification]
 workflow:
   trigger: candidate_initiated_contact_for_this_job
   priority: [identity_or_platform_error, human_takeover, sensitive_or_abnormal, terminal_state, attachment_request, screening_or_reply]
@@ -111,8 +123,8 @@ workflow:
     attachment_rejection_states: [rejected_screening, declined_test] # 按原文婉拒后仍可拒收附件，但不发S7
     other_terminal_attachment: human_review
     do_not_contact: pause_all_actions
-  consent_message: S1
-  test_message: S3
+  consent_message: S1 # 硬条件通过后先发公司介绍并询问问卷意愿
+  test_message: S3 # 仅收到针对 S1 的明确同意后发送
   rejection_message: S4
   refusal_message: DECLINE_TEST
   handoff_message: S5
