@@ -4,8 +4,16 @@ import {mkdtemp, rm, readFile, mkdir, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {MonitorStore} from '../src/monitor-store.mjs';
-import {readMonitorConfig, runMonitor, processCommands, importSeed, readStatus} from '../src/monitor-daemon.mjs';
+import {runMonitor, processCommands, importSeed, readStatus} from '../src/monitor-daemon.mjs';
 import {ingestSnapshot} from '../src/monitor-core.mjs';
+
+// Offline daemon tests must not read a developer's live skill credentials.
+async function readMonitorConfig() {
+  const config=JSON.parse(await readFile(new URL('../config/monitor.json',import.meta.url),'utf8'));
+  config.model={enabled:false,protocol:'openai-compatible'};
+  config.mode='observe_and_draft';config.allowSend=false;config.allowAssessment=false;config.debounceMs=5000;config.maxConversations=3;
+  return config;
+}
 
 async function folder(t) {
   const root=await mkdtemp(join(tmpdir(),'boss-daemon-test-'));
@@ -137,7 +145,7 @@ for (const change of ['new incoming','human takeover']) test(`model draft is dis
   await runMonitor({once:true,root,config,browser,model:async()=>{calls++;return {action:'ask',reply:'旧上下文草稿',reason:'测试',evidence:[],missingFields:[]};}});
   const s=JSON.parse(await readFile(join(root,'state.json'),'utf8'));
   assert.equal(calls,1);assert.equal(s.conversations.c1.draft,undefined);assert.equal(s.conversations.c1.processedFingerprint,null);
-  if(change==='human takeover')assert.equal(s.conversations.c1.human_handoff,true);
+  if(change==='human takeover')assert.equal(s.conversations.c1.human_handoff,false);
 });
 
 test('explicit resume cannot clear a new human input observed during resume verification',async t=>{
@@ -170,4 +178,31 @@ test('restart requires fresh detail before processing a queued conversation outs
   assert.equal(s.conversations.c1.needsDetail,true);
   assert.equal(s.conversations.c1.processedFingerprint,null);
   assert.equal(s.notifications.filter(n=>n.conversationId==='c1').length,0);
+});
+
+test('human reply mailbox binds reply to current fingerprint and preserves handoff until explicit resume',async t=>{
+  const root=await folder(t),store=await new MonitorStore(root).init();
+  try {
+    await store.transaction(s=>{s.conversations.c1={id:'c1',admitted:true,human_handoff:true,fingerprint:'fresh',handoff:{reason:'薪资'}};});
+    for(const [id,fingerprint,ok] of [['11111111-1111-4111-8111-111111111111','old',false],['22222222-2222-4222-8222-222222222222','fresh',true]]) {
+      await mkdir(join(root,'commands'),{recursive:true});
+      await writeFile(join(root,'commands',id+'.json'),JSON.stringify({id,command:'human-reply',conversationId:'c1',runId:'run-test',text:'经确认，具体薪资由招聘同事沟通。',fingerprint}));
+      await processCommands(store,fakeBrowser(snapshot()),root,'run-test');
+      assert.equal(JSON.parse(await readFile(join(root,'receipts',id+'.json'),'utf8')).ok,ok);
+    }
+    assert.equal(store.snapshot().conversations.c1.human_handoff,true);
+    assert.equal(store.snapshot().conversations.c1.humanReply.fingerprint,'fresh');
+    assert.equal(Object.keys(store.snapshot().sentIntents).length,0);
+  }finally{await store.close();}
+});
+
+test('dashboard draft queues protect against timeout and clear only on explicit draft removal',async t=>{
+ const root=await folder(t),store=await new MonitorStore(root).init();
+ try{
+  await store.transaction(s=>{s.conversations.c1={id:'c1',admitted:true,human_handoff:true,fingerprint:'f',handoff:{openedAt:'2026-11-13T01:00:00Z'}};});
+  for(const [id,hasDraft] of [['11111111-1111-4111-8111-111111111111',true],['22222222-2222-4222-8222-222222222222',false]]){
+   await mkdir(join(root,'commands'),{recursive:true});await writeFile(join(root,'commands',id+'.json'),JSON.stringify({id,command:'human-draft',conversationId:'c1',runId:'run-test',hasDraft}));
+   await processCommands(store,fakeBrowser(snapshot()),root,'run-test');const c=store.snapshot().conversations.c1;assert.equal(c.handoff.draftPresent,hasDraft);assert.ok(c.handoff.lastActivityAt);assert.equal(c.human_handoff,true);
+  }
+ }finally{await store.close();}
 });

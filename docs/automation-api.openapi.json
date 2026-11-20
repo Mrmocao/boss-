@@ -1,0 +1,1500 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Recruiting AI Read-only API",
+    "version": "1.0.0",
+    "description": "Independent read-only listener. No raw messages, candidate names, credentials or mutations. See automation-api.md."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:19338"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/api/v1/snapshot": {
+      "get": {
+        "operationId": "snapshotRead",
+        "summary": "Runtime overview",
+        "parameters": [
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; inspect freshness.stale",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "apiVersion": {
+                      "const": "v1"
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "generatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "snapshotRevision": {
+                      "type": "string"
+                    },
+                    "freshness": {
+                      "$ref": "#/components/schemas/Freshness"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Snapshot"
+                    }
+                  },
+                  "required": [
+                    "apiVersion",
+                    "requestId",
+                    "generatedAt",
+                    "snapshotRevision",
+                    "freshness",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Unchanged; no response body"
+          },
+          "400": {
+            "description": "Invalid query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser origin rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "GET only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Page snapshot changed; restart pagination",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "120 requests per minute exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "API disabled or configuration/state unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "healthRead",
+        "summary": "Service and observation health",
+        "parameters": [
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; inspect freshness.stale",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "apiVersion": {
+                      "const": "v1"
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "generatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "snapshotRevision": {
+                      "type": "string"
+                    },
+                    "freshness": {
+                      "$ref": "#/components/schemas/Freshness"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ServiceHealth"
+                    }
+                  },
+                  "required": [
+                    "apiVersion",
+                    "requestId",
+                    "generatedAt",
+                    "snapshotRevision",
+                    "freshness",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Unchanged; no response body"
+          },
+          "400": {
+            "description": "Invalid query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser origin rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "GET only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Page snapshot changed; restart pagination",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "120 requests per minute exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "API disabled or configuration/state unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/integrations": {
+      "get": {
+        "operationId": "integrationsRead",
+        "summary": "Platform/model/mailbox configuration and connectivity",
+        "parameters": [
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; inspect freshness.stale",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "apiVersion": {
+                      "const": "v1"
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "generatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "snapshotRevision": {
+                      "type": "string"
+                    },
+                    "freshness": {
+                      "$ref": "#/components/schemas/Freshness"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Integrations"
+                    }
+                  },
+                  "required": [
+                    "apiVersion",
+                    "requestId",
+                    "generatedAt",
+                    "snapshotRevision",
+                    "freshness",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Unchanged; no response body"
+          },
+          "400": {
+            "description": "Invalid query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser origin rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "GET only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Page snapshot changed; restart pagination",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "120 requests per minute exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "API disabled or configuration/state unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/statistics": {
+      "get": {
+        "operationId": "statisticsRead",
+        "summary": "Dashboard counts with definitions",
+        "parameters": [
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; inspect freshness.stale",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "apiVersion": {
+                      "const": "v1"
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "generatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "snapshotRevision": {
+                      "type": "string"
+                    },
+                    "freshness": {
+                      "$ref": "#/components/schemas/Freshness"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Statistics"
+                    }
+                  },
+                  "required": [
+                    "apiVersion",
+                    "requestId",
+                    "generatedAt",
+                    "snapshotRevision",
+                    "freshness",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Unchanged; no response body"
+          },
+          "400": {
+            "description": "Invalid query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser origin rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "GET only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Page snapshot changed; restart pagination",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "120 requests per minute exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "API disabled or configuration/state unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/handoffs": {
+      "get": {
+        "operationId": "handoffsRead",
+        "summary": "Human intervention metadata",
+        "parameters": [
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque nextCursor from previous response"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; inspect freshness.stale",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "apiVersion": {
+                      "const": "v1"
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "generatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "snapshotRevision": {
+                      "type": "string"
+                    },
+                    "freshness": {
+                      "$ref": "#/components/schemas/Freshness"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Page"
+                    }
+                  },
+                  "required": [
+                    "apiVersion",
+                    "requestId",
+                    "generatedAt",
+                    "snapshotRevision",
+                    "freshness",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Unchanged; no response body"
+          },
+          "400": {
+            "description": "Invalid query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser origin rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "GET only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Page snapshot changed; restart pagination",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "120 requests per minute exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "API disabled or configuration/state unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations": {
+      "get": {
+        "operationId": "conversationsRead",
+        "summary": "Active conversation metadata",
+        "parameters": [
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque nextCursor from previous response"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; inspect freshness.stale",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "apiVersion": {
+                      "const": "v1"
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "generatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "snapshotRevision": {
+                      "type": "string"
+                    },
+                    "freshness": {
+                      "$ref": "#/components/schemas/Freshness"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Page"
+                    }
+                  },
+                  "required": [
+                    "apiVersion",
+                    "requestId",
+                    "generatedAt",
+                    "snapshotRevision",
+                    "freshness",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Unchanged; no response body"
+          },
+          "400": {
+            "description": "Invalid query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser origin rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "GET only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Page snapshot changed; restart pagination",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "120 requests per minute exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "API disabled or configuration/state unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/openapi.json": {
+      "get": {
+        "summary": "OpenAPI descriptor",
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "Freshness": {
+        "type": "object",
+        "properties": {
+          "stateAvailable": {
+            "type": "boolean"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "lastObservationAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "ProcessHealth": {
+        "type": "object",
+        "properties": {
+          "running": {
+            "type": "boolean"
+          },
+          "responsive": {
+            "type": "boolean"
+          },
+          "heartbeatAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "heartbeatAgeMs": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "ServiceHealth": {
+        "type": "object",
+        "properties": {
+          "apiAvailable": {
+            "type": "boolean"
+          },
+          "supervisor": {
+            "$ref": "#/components/schemas/ProcessHealth"
+          },
+          "monitor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProcessHealth"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "health": {
+                    "type": "string"
+                  },
+                  "reportedHealth": {
+                    "type": "string"
+                  },
+                  "paused": {
+                    "type": "boolean"
+                  },
+                  "lastErrorCode": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "mode": {
+            "type": "string"
+          },
+          "automaticSendConfigured": {
+            "type": "boolean"
+          },
+          "automaticProcessingActive": {
+            "type": "boolean"
+          },
+          "lastObservationAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "observationAgeMs": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "observationFresh": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Conversation": {
+        "type": "object",
+        "properties": {
+          "platformId": {
+            "const": "boss"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "conversationRef": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "humanHandoff": {
+            "type": "boolean"
+          },
+          "category": {
+            "enum": [
+              "policy_question",
+              "qualification_review",
+              "identity_or_history",
+              "delivery_verification",
+              "assessment_or_attachment",
+              "model_error",
+              "manual_takeover",
+              "needs_review",
+              null
+            ]
+          },
+          "lastMessageDirection": {
+            "enum": [
+              "incoming",
+              "outgoing",
+              "unknown",
+              null
+            ]
+          },
+          "admittedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastActivityAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "clarificationCount": {
+            "type": "integer"
+          },
+          "openedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastHumanReplyAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "autoReviewAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Unix milliseconds"
+          },
+          "autoResumeBlocked": {
+            "type": "boolean"
+          },
+          "draftPresent": {
+            "type": "boolean"
+          },
+          "replyQueued": {
+            "type": "boolean"
+          },
+          "reviewStatus": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "materialsReceived": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Statistics": {
+        "type": "object",
+        "properties": {
+          "platformId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "timeZone": {
+            "const": "Asia/Shanghai"
+          },
+          "today": {
+            "type": "string",
+            "format": "date"
+          },
+          "yesterday": {
+            "type": "string",
+            "format": "date"
+          },
+          "counts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "sendReceipts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "definitions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "scope": {
+            "type": "string"
+          }
+        }
+      },
+      "Integrations": {
+        "type": "object",
+        "properties": {
+          "platforms": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "adapterImplemented": {
+                  "type": "boolean"
+                },
+                "accounts": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "connected": {
+                        "type": "boolean"
+                      },
+                      "lastVerifiedObservationAt": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "date-time"
+                      },
+                      "identityConfidence": {
+                        "const": "display_only"
+                      },
+                      "health": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "configurationReady": {
+                "type": "boolean"
+              },
+              "connectivity": {
+                "const": "not_probed_by_api"
+              }
+            }
+          },
+          "assessment": {
+            "type": "object",
+            "properties": {
+              "delivery": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            }
+          },
+          "mailbox": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string"
+              },
+              "checkedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "stale": {
+                "type": "boolean"
+              },
+              "accounts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "mailboxRef": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "hasError": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "outboundEmail": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "not_probed_by_api"
+              }
+            }
+          },
+          "notifications": {
+            "type": "object",
+            "properties": {
+              "channels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "dingTalkConnected": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      "Page": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Conversation"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "listRevision": {
+            "type": "string"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "const": "v1"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "Snapshot": {
+        "type": "object",
+        "properties": {
+          "service": {
+            "$ref": "#/components/schemas/ServiceHealth"
+          },
+          "integrations": {
+            "$ref": "#/components/schemas/Integrations"
+          },
+          "statistics": {
+            "$ref": "#/components/schemas/Statistics"
+          },
+          "humanIntervention": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "configurationBlocked": {
+                "type": "integer"
+              },
+              "categories": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "recentWindowHours": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "retentionDays": {
+                "const": 3
+              },
+              "lastScanAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "scannedRows": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "scanStopReason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "fullHistoryVerified": {
+                "type": "boolean"
+              },
+              "messageIdsVerified": {
+                "type": "boolean"
+              }
+            }
+          },
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "readOnly": {
+                "const": true
+              },
+              "mutationSupported": {
+                "const": false
+              },
+              "platforms": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "candidateNamesIncluded": {
+                "const": false
+              },
+              "messageBodiesIncluded": {
+                "const": false
+              },
+              "credentialsIncluded": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

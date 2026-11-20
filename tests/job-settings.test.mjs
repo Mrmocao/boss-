@@ -1,0 +1,37 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {contextForJob,readJobProfiles,saveJobProfiles} from '../src/job-settings.mjs';
+import {loadWorkflowPolicy,planWorkflow} from '../src/recruiting-workflow.mjs';
+
+test('new job routes only its titles to its screening, questionnaire and branches',async t=>{
+  const dir=await mkdtemp(join(tmpdir(),'recruiting-job-'));
+  t.after(()=>rm(dir,{recursive:true,force:true}));
+  const path=join(dir,'jobs.json'),initial=await readJobProfiles(path);
+  const job={...initial.jobs[0],id:'art',name:'原画',acceptedTitles:['原画师'],majors:['插画'],excluded:[],intent:'原画',url:'https://hr-youkia.youkia.net/art.xlsx'};
+  let downloads=0;
+  const saved=await saveJobProfiles(path,{revision:initial.revision,job},{verify:async()=>{downloads++;}});
+  assert.equal(downloads,1);
+  assert.deepEqual((await readJobProfiles(path)).jobs,saved.jobs);
+  await assert.rejects(saveJobProfiles(path,{revision:initial.revision,job}),{code:'SETTINGS_CHANGED'});
+  await assert.rejects(saveJobProfiles(path,{revision:saved.revision,job:{...job,acceptedTitles:initial.jobs[0].acceptedTitles}}),{code:'JOB_TITLE_IN_USE'});
+  const policy=await loadWorkflowPolicy(),config={allowAssessment:true,jobProfiles:saved,assessment:{delivery:'file'},workflow:{requirements:'全局要求'}};
+  const scoped=contextForJob(config,policy,'原画师');
+  assert.equal(scoped.config.workflow.requirements,'全局要求');
+  assert.equal(contextForJob(config,policy,'数值策划').config.assessment.delivery,'file');
+  const candidate={id:'A',jobTitle:'原画师',messages:[],workflow:{stage:'screening'}};
+  const facts={education:[{level:'本科',major:'插画',stage:'graduated'}],intent:{value:'yes'},concern:{kind:'none'}};
+  const plan=(p=scoped.policy)=>planWorkflow(candidate,facts,p,scoped.config);
+  const invite=plan();
+  assert.equal(invite.messageId,'S1');
+  assert.equal(plan({...scoped.policy,job:{...job,onPass:'human'}}).type,'handoff');
+  candidate.workflow.stage='waiting_consent';
+  candidate.messages=[{direction:'outgoing',text:invite.text},{direction:'incoming',text:'愿意'}];
+  facts.consent={value:'yes',quote:'愿意'};
+  const intent={id:'sent',conversationId:'A',status:'sent_confirmed',messageId:'S1',text:invite.text};
+  const send=planWorkflow(candidate,facts,scoped.policy,scoped.config,{sent:intent});
+  assert.equal(send.messageId,'S3');
+  assert.ok(send.text.includes(job.url));
+});

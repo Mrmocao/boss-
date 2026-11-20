@@ -12,14 +12,24 @@ export const followupFingerprint = detail => createHash('sha256').update(JSON.st
   detail.messages.filter(m => m.direction !== 'system').map(m => [m.direction,m.kind,m.text]))).digest('hex');
 const fail = code => { throw Object.assign(new Error(code),{code}); };
 
+export function validateFollowupRequest(request) {
+  const s1 = request?.workflowStage === 's1_consent';
+  if(!request?.intentId || !request.authorization || !request.expectedFingerprint || typeof request.text!=='string'
+    || request.text.length>1500 || !request.text.trim()) fail('FOLLOWUP_REQUEST_INVALID');
+  if(s1) {
+    if(request.messageId !== 'S1' || !request.text.includes('问卷') || /https?:\/\/|面试|邀约|试题|笔试|链接/.test(request.text))
+      fail('S1_REQUEST_INVALID');
+  } else if(/https?:\/\/|面试|邀约|试题|问卷|笔试|链接/.test(request.text)) fail('FOLLOWUP_REQUEST_INVALID');
+  return {workflowStage:s1 ? 's1_consent' : 'single_followup', messageId:request.messageId || null};
+}
+
 function editorAction({action,text,expectedFingerprint,expected,guardExpression}) {
   // Replaced by fixed serialized guard at expression construction, never candidate-provided code.
   const guard = guardExpression;
   if (guard.blocked) return {blocked:guard.blocked};
   if (['domRowId','name','jobTitle'].some(k => guard.selectedRow?.[k] !== expected[k])) return {blocked:'IDENTITY_CHANGED'};
   const activity=guard.activity;
-  if (Date.now()-(activity.lastHumanAt || 0)<15000 || activity.humanConversationIds?.includes(expected.domRowId)
-    || activity.manualConversationIds?.includes(expected.domRowId)) return {blocked:'HUMAN_ACTIVE'};
+  if (Date.now()-(activity.lastHumanAt || 0)<15000 || activity.humanConversationIds?.includes(expected.domRowId)) return {blocked:'HUMAN_ACTIVE'};
   const visible=e=>e && e.getClientRects().length>0;
   const editors=Array.from(document.querySelectorAll('.conversation-editor #boss-chat-editor-input[contenteditable="true"]')).filter(visible);
   const buttons=Array.from(document.querySelectorAll('.conversation-editor .submit')).filter(e=>visible(e)&&e.innerText.trim()==='发送');
@@ -27,9 +37,12 @@ function editorAction({action,text,expectedFingerprint,expected,guardExpression}
   const editor=editors[0], button=buttons[0];
   const current=editor.innerText.trim();
   const messages=Array.from(document.querySelectorAll('.conversation-main .chat-message-list .message-item')).filter(visible).map(e=>{
-    const friend=!!e.querySelector('.item-friend'), myself=!!e.querySelector('.item-myself'), system=!!e.querySelector('.item-system,.message-card-wrap');
-    const text=e.querySelector('.text-content')?.innerText?.trim() || null;
-    return [system?'system':friend&&!myself?'incoming':myself&&!friend?'outgoing':'unknown',system?'system_card':text?'text':'unknown',text];
+    const friend=!!e.querySelector('.item-friend'), myself=!!e.querySelector('.item-myself');
+    const file=e.querySelector('.file-name,.file-title,.attachment-name,a[download]');
+    const fileName=file?(file.getAttribute('download')||file.innerText||'').trim():null;
+    const system=!fileName&&!!e.querySelector('.item-system,.message-card-wrap');
+    const text=fileName||e.querySelector('.text-content')?.innerText?.trim() || null;
+    return [system?'system':friend&&!myself?'incoming':myself&&!friend?'outgoing':'unknown',system?'system_card':fileName?'attachment':text?'text':'unknown',text];
   }).filter(m=>m[0]!=='system');
   if(JSON.stringify(messages)!==expectedFingerprint) return {blocked:'MESSAGES_CHANGED'};
   if(action==='inspect') return {editorEmpty:!current,buttonReady:!button.classList.contains('disabled')};
@@ -41,7 +54,12 @@ function editorAction({action,text,expectedFingerprint,expected,guardExpression}
   }
   if(action==='fill') {
     if(current) return {blocked:'DRAFT_PRESENT'};
-    editor.focus(); editor.textContent=text;
+    editor.focus();
+    // The live editor uses white-space:normal. Text-node newlines collapse;
+    // explicit BR elements preserve the exact multiline message the user approved.
+    const nodes=[];
+    text.split('\n').forEach((line,index)=>{if(index)nodes.push(document.createElement('br'));nodes.push(document.createTextNode(line));});
+    editor.replaceChildren(...nodes);
     editor.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:text}));
     return {filled:editor.innerText.trim()===text};
   }
@@ -73,8 +91,7 @@ export function followupExpression({action,text,expected,messages,account,owner}
 }
 
 export async function sendAuthorizedFollowup(request) {
-  if(!request?.intentId || !request.authorization || !request.expectedFingerprint || typeof request.text!=='string'
-    || request.text.length>1500 || !request.text.trim() || /https?:\/\/|面试|邀约|试题|问卷|笔试/.test(request.text)) fail('FOLLOWUP_REQUEST_INVALID');
+  const validatedRequest=validateFollowupRequest(request);
   const config=await readMonitorConfig();
   const store=await new MonitorStore(monitorRoot).init(); // Refuses to race a running monitor.
   const browser=new MonitorBrowser(config);
@@ -96,6 +113,7 @@ export async function sendAuthorizedFollowup(request) {
       ingestSnapshot(s,snapshot,config);
       if(s.conversations[record.id].human_handoff) fail('HUMAN_HANDOFF');
       s.sentIntents[request.intentId]={id:request.intentId,conversationId:record.id,text:request.text,status:'prepared',
+        workflowStage:validatedRequest.workflowStage,messageId:validatedRequest.messageId,
         authorization:request.authorization,clarificationException:request.clarificationException || null,createdAt:new Date().toISOString()};
     });
     createdIntent=true;

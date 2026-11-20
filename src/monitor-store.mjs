@@ -5,6 +5,12 @@ import { join } from 'node:path';
 const SCHEMA_VERSION = 1;
 const MAX_EVENTS = 2000;
 const MAX_NOTIFICATIONS = 500;
+export async function renameWithRetry(from,to,{renameFn=rename,delay=ms=>new Promise(r=>setTimeout(r,ms))}={}) {
+  for(let attempt=0;;attempt++)try{return await renameFn(from,to);}catch(e){
+    if(!['EPERM','EACCES','EBUSY'].includes(e.code)||attempt>=5)throw e;
+    await delay(40*(attempt+1));
+  }
+}
 
 function error(code, message, options) { return Object.assign(new Error(message, options), { code }); }
 function clone(value) { return structuredClone(value); }
@@ -122,7 +128,7 @@ export class MonitorStore {
       await handle.writeFile(JSON.stringify(state, null, 2) + '\n', 'utf8');
       await handle.sync();
       await handle.close(); handle = null;
-      await rename(temp, this.statePath);
+      await renameWithRetry(temp, this.statePath);
     } catch (e) {
       await handle?.close().catch(() => {});
       await rm(temp, { force:true }).catch(() => {});

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {runInNewContext} from 'node:vm';
-import {followupExpression,followupFingerprint} from '../src/authorized-followup.mjs';
+import {followupExpression,followupFingerprint,validateFollowupRequest} from '../src/authorized-followup.mjs';
 
 const expected={domRowId:'candidate-1',name:'候选人',jobTitle:'数值策划'};
 const messages=[{direction:'incoming',kind:'text',text:'愿意聊聊'}];
@@ -10,6 +10,7 @@ function fixture(overrides={}) {
   const value={clicked:0,focused:0,events:0};
   const element=text=>({innerText:text,getClientRects:()=>[{}],querySelector:()=>null,getAttribute:()=>null});
   const editor={...element(overrides.draft??plain.text),focus:()=>value.focused++,dispatchEvent:()=>value.events++};
+  editor.replaceChildren=(...nodes)=>{editor.innerText=nodes.map(n=>n.tagName==='BR'?'\n':n.textContent).join('');};
   Object.defineProperty(editor,'textContent',{set:text=>editor.innerText=text});
   const button={...element('发送'),click:()=>value.clicked++,classList:{contains:()=>false}};
   const row={...element(''),getAttribute:()=>overrides.domRowId??expected.domRowId,querySelector:s=>element(s==='.geek-name'?(overrides.name??expected.name):expected.jobTitle)};
@@ -23,7 +24,7 @@ function fixture(overrides={}) {
   const selectors={'.top-profile-logout .user-name':element(overrides.account??plain.account),'.geek-item.selected':row,'.conversation-main':root};
   const lists={'.conversation-editor #boss-chat-editor-input[contenteditable="true"]':[editor],'.conversation-editor .submit':[button],'.conversation-main .chat-message-list .message-item':[message]};
   return {value,editor,button,sandbox:{location:{origin:overrides.origin??'https://www.zhipin.com',pathname:'/web/chat/index'},
-    window:{__bossRecruitingMonitorV1:hook},document:{querySelector:s=>selectors[s],querySelectorAll:s=>lists[s]||[]},
+    window:{__bossRecruitingMonitorV1:hook},document:{querySelector:s=>selectors[s],querySelectorAll:s=>lists[s]||[],createTextNode:text=>({textContent:text}),createElement:tag=>({tagName:tag.toUpperCase()})},
     InputEvent:class{},Date,JSON}};
 }
 const run=(f,args={})=>runInNewContext(followupExpression({...plain,...args}),f.sandbox);
@@ -46,10 +47,11 @@ test('new messages and modified draft block sending without modifying the editor
 });
 
 test('recent trusted human activity and sticky conversation handoff block sending',()=>{
-  for(const overrides of [{lastHumanAt:Date.now()},{humanIds:[expected.domRowId]},{manualIds:[expected.domRowId]}]) {
+  for(const overrides of [{lastHumanAt:Date.now()},{humanIds:[expected.domRowId]}]) {
     const f=fixture(overrides);assert.equal(run(f).blocked,'HUMAN_ACTIVE');assert.equal(f.value.clicked,0);
   }
 });
+test('old manual selection alone does not block a guarded send',()=>{const f=fixture({manualIds:[expected.domRowId]});assert.equal(run(f).clicked,true);});
 
 test('fill refuses existing draft and performs input only after empty editor verification',()=>{
   const occupied=fixture({draft:'人工草稿'});assert.equal(run(occupied,{action:'fill'}).blocked,'DRAFT_PRESENT');assert.equal(occupied.value.events,0);
@@ -60,6 +62,10 @@ test('fill refuses existing draft and performs input only after empty editor ver
 test('disabled send control prevents click',()=>{
   const f=fixture();f.button.classList.contains=()=>true;
   assert.equal(run(f).blocked,'DRAFT_CHANGED');assert.equal(f.value.clicked,0);
+});
+test('multiline S3 uses line-break nodes and preserves URL query text exactly without sending',()=>{
+  const f=fixture({draft:''}),text='这是笔试链接：https://hr.example.test/a.xlsx?x=1&signature=a%2Bb\n\n请将问卷和简历发到hr-rpg@youkia.net\n编号：BOSS-1234';
+  assert.equal(run(f,{action:'fill',text}).filled,true);assert.equal(f.editor.innerText,text);assert.equal(f.value.clicked,0);
 });
 
 test('message fingerprint ignores delivery text but detects changed conversation content',()=>{
@@ -91,4 +97,11 @@ test('receipt requires exact outgoing text, delivery status and empty editor',()
   assert.equal(run(incoming,{action:'receipt',messages:[{direction:'incoming',kind:'text',text:plain.text}]}).confirmed,false);
   const mismatch=fixture({draft:'',direction:'outgoing',message:'另一个消息',status:'送达'});
   assert.equal(run(mismatch,{action:'receipt',messages:[{direction:'outgoing',kind:'text',text:'另一个消息'}]}).confirmed,false);
+});
+
+test('only explicit S1 stage may contain questionnaire consent wording',()=>{
+  const baseRequest={intentId:'intent-1',authorization:'user requested one real candidate flow',expectedFingerprint:'fingerprint',text:'你好，愿意做问卷吗？'};
+  assert.throws(()=>validateFollowupRequest(baseRequest),{code:'FOLLOWUP_REQUEST_INVALID'});
+  assert.deepEqual(validateFollowupRequest({...baseRequest,workflowStage:'s1_consent',messageId:'S1'}),{workflowStage:'s1_consent',messageId:'S1'});
+  assert.throws(()=>validateFollowupRequest({...baseRequest,workflowStage:'s1_consent',messageId:'S1',text:'这是笔试链接：https://example.test'}),{code:'S1_REQUEST_INVALID'});
 });

@@ -1,0 +1,2 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {loadConfig} from '../src/config.mjs';
+test('detects the installed per-user Chrome path',()=>{const local=process.env.LOCALAPPDATA;const config=loadConfig({BOSS_PROFILE:'company-2',LOCALAPPDATA:local});assert.ok(config.chromePath?.toLowerCase().endsWith('google\\chrome\\application\\chrome.exe')||config.chromePath?.toLowerCase().endsWith('google/chrome/application/chrome.exe'));});

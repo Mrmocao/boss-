@@ -3,9 +3,10 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { ConnectorError, CdpSession, listTargets, chooseBossTarget, isBossUrl } from './cdp.mjs';
 import { loadConfig } from './config.mjs';
-import { createListAdapter } from './recruiter-list.mjs';
+import { createListAdapter,scanRecruiterList,contextKey,sameListContext } from './recruiter-list.mjs';
 import { readSelectedConversation } from './recruiter-detail.mjs';
 import { resolveRecruiterTarget } from './browser-registry.mjs';
+import {isRecentRow} from './recent-conversations.mjs';
 
 const HOOK = '__bossRecruitingMonitorV1';
 const HUMAN_IDLE_MS = 15_000;
@@ -13,7 +14,7 @@ const COVERAGE = Object.freeze({ list:'visible_window_only', history:'unknown', 
 const fail = (code, message) => { throw new ConnectorError(code, message); };
 
 // Serialized into the page. Only DOM observations and an explicitly guarded row click are allowed.
-function pageMonitor({ expectedAccount, owner, action, row, humanIdleMs }) {
+function pageMonitor({ expectedAccount, owner, action, row, humanIdleMs, allowNoSelection }) {
   const currentUrl = new URL(location.href);
   if (currentUrl.origin !== 'https://www.zhipin.com' || currentUrl.username || currentUrl.password
       || currentUrl.pathname !== '/web/chat/index') return { blocked:'PAGE_CHANGED' };
@@ -27,7 +28,11 @@ function pageMonitor({ expectedAccount, owner, action, row, humanIdleMs }) {
     try { const u = new URL(e.getAttribute('href'), currentUrl); return u.origin === currentUrl.origin && u.pathname === path && !u.username && !u.password; }
     catch { return false; }
   });
-  if (!nav('/web/chat/job/list','职位管理') || !nav('/web/chat/geek/manage_v2','牛人管理') || !nav('/web/chat/index','沟通'))
+  const visibleLabel = label => Array.from(document.querySelectorAll('a,button,[role="button"],.nav-item'))
+    .some(e => visible(e) && e.innerText.trim() === label);
+  const peopleNav = nav('/web/chat/geek/manage_v2','牛人管理') || visibleLabel('推荐牛人');
+  const chatNav = nav('/web/chat/index','沟通') || nav('/web/chat/index','消息');
+  if (!nav('/web/chat/job/list','职位管理') || !peopleNav || !chatNav)
     return { blocked:'ACCOUNT_UNVERIFIED' };
   if (Array.from(document.querySelectorAll('a,button,[role="button"]')).filter(visible)
     .some(e => /^(扫码登录|短信登录|验证码登录|密码登录|登录注册|登录\/注册)$/.test(e.innerText.trim()))) return { blocked:'LOGIN_SUSPECTED' };
@@ -38,9 +43,9 @@ function pageMonitor({ expectedAccount, owner, action, row, humanIdleMs }) {
   const id = selected?.getAttribute('data-id');
   const selectedRow = id ? { domRowId:id, name:text('.geek-name',selected), jobTitle:text('.source-job',selected) } : null;
   if (!list || !list.clientHeight) return { blocked:'LIST_UNAVAILABLE' };
-  if (!selectedRow?.name || !selectedRow.jobTitle) return { blocked:'CONVERSATION_UNAVAILABLE' };
+  if ((!selectedRow?.name || !selectedRow.jobTitle) && !allowNoSelection) return { blocked:'CONVERSATION_UNAVAILABLE' };
   const conversation = document.querySelector('.conversation-main');
-  if (text('.base-name',conversation) !== selectedRow.name || text('.position-name',conversation) !== selectedRow.jobTitle)
+  if (selectedRow && (text('.base-name',conversation) !== selectedRow.name || text('.position-name',conversation) !== selectedRow.jobTitle))
     return { blocked:'CONVERSATION_MISMATCH' };
   const key = '__bossRecruitingMonitorV1';
   const roots = '.user-list,.conversation-main,.conversation-editor,.chat-conversation,.top-profile-logout,.chat-label-item,.chat-select-job,.chat-message-filter-left,.chat-user';
@@ -89,14 +94,14 @@ function pageMonitor({ expectedAccount, owner, action, row, humanIdleMs }) {
   state.owner = owner;
   // The live recruiter editor is a sibling of .conversation-main, not its descendant.
   // Restrict lookup to conversation containers so list-search text is never treated as a draft.
-  const editorRoots = [conversation,...document.querySelectorAll('.conversation-editor')];
+  const editorRoots = [conversation,...document.querySelectorAll('.conversation-editor')].filter(Boolean);
   const editors = [...new Set(editorRoots.flatMap(root => Array.from(root.querySelectorAll(editorSelector))))];
   const hasDraft = editors.filter(visible)
     .some(e => String(e.value ?? e.innerText ?? '').trim().length > 0);
   const typing = hasDraft || (state.lastInputConversationId === id && state.lastInputAt > 0 && Date.now() - state.lastInputAt < humanIdleMs);
   // A draft restored by Chrome or present before the listener started is still human work.
   // Preserve only its existence, never copy the draft text into monitoring state.
-  if (hasDraft && !state.humanConversationIds.includes(id)) {
+  if (hasDraft && id && !state.humanConversationIds.includes(id)) {
     state.humanConversationIds.push(id);
     state.revision++;
   }
@@ -106,10 +111,11 @@ function pageMonitor({ expectedAccount, owner, action, row, humanIdleMs }) {
     delete window[key];
     return { closed:true };
   }
-  if (action === 'open' || action === 'resume') {
+  if (action === 'open' || action === 'review_open' || action === 'resume') {
     if (typing || (state.lastHumanAt > 0 && Date.now() - state.lastHumanAt < humanIdleMs)) return { blocked:'HUMAN_ACTIVE' };
+    if(action==='review_open'&&Date.now()-Math.max(state.lastHumanAt||0,state.lastInputAt||0)<600000)return {blocked:'HUMAN_ACTIVE'};
     if (action === 'resume') {
-      if (selectedRow.domRowId !== row.domRowId || selectedRow.name !== row.name || selectedRow.jobTitle !== row.jobTitle)
+      if (selectedRow?.domRowId !== row.domRowId || selectedRow.name !== row.name || selectedRow.jobTitle !== row.jobTitle)
         return { blocked:'CONVERSATION_MISMATCH' };
       state.humanConversationIds = state.humanConversationIds.filter(id => id !== row.domRowId);
       state.manualConversationIds = state.manualConversationIds.filter(id => id !== row.domRowId);
@@ -117,15 +123,16 @@ function pageMonitor({ expectedAccount, owner, action, row, humanIdleMs }) {
       state.revision++;
       return { resumed:true };
     }
-    if (state.humanConversationIds.includes(row.domRowId) || state.manualConversationIds.includes(row.domRowId))
+    if (action!=='review_open'&&state.humanConversationIds.includes(row.domRowId))
       return { blocked:'HUMAN_HANDOFF' };
     const matches = Array.from(list.querySelectorAll('.geek-item')).filter(e => e.getAttribute('data-id') === row.domRowId);
     if (matches.length !== 1 || !visible(matches[0]) || text('.geek-name',matches[0]) !== row.name || text('.source-job',matches[0]) !== row.jobTitle)
       return { blocked:'CONVERSATION_MISMATCH' };
-    if (selectedRow.domRowId !== row.domRowId) matches[0].click();
+    if (selectedRow?.domRowId !== row.domRowId) matches[0].click();
     return { opened:true, sideEffects:['may_mark_read'] };
   }
-  const handoffRequired = typing || state.humanConversationIds.includes(id) || state.manualConversationIds.includes(id);
+  if(state.lastHumanAt&&Date.now()-state.lastHumanAt>=humanIdleMs){state.humanConversationIds=[];state.manualConversationIds=[];state.manualSelection=false;}
+  const handoffRequired = typing || state.humanConversationIds.includes(id);
   return { account:{ displayName:account, identityConfidence:'display_only' }, selectedRow, epoch:state.epoch, installed,
     listWindow:{ atTop:Number.isFinite(list.scrollTop) && list.scrollTop <= 2, scrollTop:Number.isFinite(list.scrollTop) ? list.scrollTop : null },
     activity:{ typing, hasDraft, handoffRequired, handoffReason:handoffRequired ? (hasDraft ? 'draft_or_typing' : 'manual_interaction') : null,
@@ -139,11 +146,13 @@ export function monitorExpression(args) {
 
 /** Dedicated-browser adapter. Observation never opens a conversation implicitly. */
 export class MonitorBrowser {
-  constructor({ profile, expectedAccountDisplayName, targetId }, dependencies = {}) {
+  constructor({ profile, expectedAccountDisplayName, targetId, mode,recentWindowHours }, dependencies = {}) {
     if (typeof expectedAccountDisplayName !== 'string' || !expectedAccountDisplayName.trim())
       fail('ACCOUNT_REQUIRED','An explicit expected account display name is required.');
     if (typeof profile !== 'string' || !profile) fail('PROFILE_REQUIRED','An explicit browser profile is required.');
     this.profile = profile;
+    this.automatic = mode === 'automatic';
+    this.recentWindowHours=recentWindowHours;
     this.expectedAccountDisplayName = expectedAccountDisplayName;
     this.targetId = targetId;
     this.owner = randomUUID();
@@ -183,7 +192,7 @@ export class MonitorBrowser {
     if (!isBossUrl(target.targetInfo?.url) || new URL(target.targetInfo.url).pathname !== '/web/chat/index')
       fail('TARGET_CHANGED','The monitored target left the recruiter conversation page.');
     const result = await this.session.send('Runtime.evaluate',{ expression:monitorExpression({
-      expectedAccount:this.expectedAccountDisplayName, owner:this.owner, action, row }), returnByValue:true, timeout:4000 });
+      expectedAccount:this.expectedAccountDisplayName, owner:this.owner, action, row,allowNoSelection:this.automatic }), returnByValue:true, timeout:4000 });
     if (result.exceptionDetails || !result.result?.value) fail('PAGE_READ_FAILED','The browser monitor probe failed.');
     if (result.result.value.blocked) fail(result.result.value.blocked,'Browser monitor safety check failed.');
     return result.result.value;
@@ -199,6 +208,11 @@ export class MonitorBrowser {
     if (fullRead) {
       const list = await this.adapter.read();
       if (list.account?.displayName !== this.expectedAccountDisplayName) fail('ACCOUNT_CHANGED','Account changed during list read.');
+      if (!probe.selectedRow && !list.selectedRow && this.automatic) {
+        this.lastProbe=probe;this.lastFullRead=this.deps.now();
+        this.cache={account:list.account,rows:list.rows,selectedRow:null,detail:null,filters:list.filters,coverage:{...COVERAGE,topWindowObserved:probe.listWindow?.atTop===true}};
+        return {...structuredClone(this.cache),activity:{...probe.activity,observerReset},changed:true};
+      }
       const selected = list.rows.filter(row => row.domRowId === list.selectedRow);
       if (selected.length !== 1 || selected[0].domRowId !== probe.selectedRow.domRowId
           || selected[0].name !== probe.selectedRow.name || selected[0].jobTitle !== probe.selectedRow.jobTitle)
@@ -221,12 +235,32 @@ export class MonitorBrowser {
       activity:{...probe.activity,observerReset}, changed:false };
   }
 
-  async openConversation(row) {
+  async openConversation(row,{reviewOnly=false}={}) {
     if (!row || !['domRowId','name','jobTitle'].every(k => typeof row[k] === 'string' && row[k]))
       fail('INVALID_CONVERSATION','A complete observed row identity is required.');
-    await this.evaluate('open',{domRowId:row.domRowId,name:row.name,jobTitle:row.jobTitle});
+    if(this.automatic){
+      let page=await this.adapter.read();const key=contextKey(page);
+      if(!page.rows.some(r=>r.domRowId===row.domRowId)){
+        await this.adapter.scroll(0,key);await this.adapter.settle();
+        let priorTop=-1;
+        for(let i=0;i<80;i++){
+          const activity=await this.evaluate();if(activity.activity.typing||Date.now()-activity.activity.lastHumanAt<15000)fail('HUMAN_ACTIVE','Human is using the page.');
+          page=await this.adapter.read();if(!sameListContext(page,key))fail('CONVERSATION_MISMATCH','Context changed while locating candidate.');
+          if(page.rows.some(r=>r.domRowId===row.domRowId))break;
+          if(this.recentWindowHours&&page.rows.length&&page.rows.every(r=>!isRecentRow(r,{recentWindowHours:this.recentWindowHours})))break;
+          if(page.geometry.top===priorTop)break;priorTop=page.geometry.top;
+          await this.adapter.scroll(page.geometry.top+Math.max(100,page.geometry.client*.8),key);await this.adapter.settle();
+        }
+      }
+    }
+    await this.evaluate(reviewOnly?'review_open':'open',{domRowId:row.domRowId,name:row.name,jobTitle:row.jobTitle});
     await this.deps.settle();
-    const observation = await this.poll({force:true});
+    let observation;
+    for(let attempt=0;attempt<5;attempt++){
+      try{observation=await this.poll({force:true});if(observation.selectedRow?.domRowId===row.domRowId)break;}catch(e){if(!['CONVERSATION_MISMATCH','DETAIL_CHANGED','OBSERVATION_CHANGED'].includes(e.code))throw e;}
+      await this.deps.settle();
+    }
+    if(!observation?.selectedRow)fail('CONVERSATION_MISMATCH','Requested conversation did not settle.');
     if (['domRowId','name','jobTitle'].some(k => observation.selectedRow[k] !== row[k]))
       fail('CONVERSATION_MISMATCH','The requested conversation did not become selected.');
     return observation;
@@ -242,7 +276,16 @@ export class MonitorBrowser {
   }
 
   // Bounded reconciliation only. Virtual-list history and hidden conversations remain unverified.
-  async scanStep() { return this.poll({force:true}); }
+  async scanStep() {
+    if(!this.automatic)return this.poll({force:true});
+    const probe=await this.evaluate();
+    if(probe.activity.typing||Date.now()-(probe.activity.lastHumanAt||0)<15000)return this.poll({force:true});
+    const guarded={...this.adapter,settle:async()=>{await this.adapter.settle();const p=await this.evaluate();if(p.activity.typing||Date.now()-(p.activity.lastHumanAt||0)<15000)fail('HUMAN_ACTIVE','Human activity during scan');}};
+    const scan=await scanRecruiterList(guarded,{maxSteps:this.recentWindowHours?20:80,maxRows:2000,stopAfterPage:this.recentWindowHours?(page=>page.rows.length>0&&page.rows.every(r=>!isRecentRow(r,{recentWindowHours:this.recentWindowHours}))):undefined});
+    const snapshot=await this.poll({force:true});
+    const rows=new Map(scan.rows.map(r=>[r.domRowId,r]));for(const row of snapshot.rows)rows.set(row.domRowId,row);
+    return {...snapshot,rows:[...rows.values()],coverage:{...snapshot.coverage,scanStopReason:scan.scope.stopReason,scannedRows:scan.rows.length,fullScan:scan.scope.stopReason==='explicit_end'}};
+  }
 
   async close() {
     if (!this.session) return;

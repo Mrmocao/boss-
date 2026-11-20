@@ -77,6 +77,16 @@ test('observed navigation tracking query is accepted but foreign and wrong-path 
   for (const bad of ['https://example.org/web/chat/index?ka=menu-im', '/web/chat/index/other',
     'https://user@www.zhipin.com/web/chat/index', 'javascript:alert(1)']) assert.equal(probe(bad), false);
 });
+test('current recruiter navigation accepts the 推荐牛人 label without weakening account checks', () => {
+  const href = 'https://www.zhipin.com/web/chat/index';
+  const element = (text, link = null, className = '') => ({ innerText:text, className, getClientRects:()=>[{}], getAttribute:()=>link });
+  const links = [element('职位管理','/web/chat/job/list'),element('消息\n101','/web/chat/index'),element('推荐牛人',null,'nav-item')];
+  const result = runInNewContext(pageProbe, { URL, location:{href}, getComputedStyle:()=>({visibility:'visible'}),
+    document:{readyState:'complete',body:{innerText:''},
+      querySelector:s=>s==='.top-profile-logout .user-name'?element('郑慧欣'):null,
+      querySelectorAll:s=>s==='a'?links:s.includes('button')||s.includes('[role="button"]')||s.includes('.nav-item')?links:[]}});
+  assert.equal(result.signals.recruiterAccountNavigation, true);
+});
 test('navigation away between target selection and read prevents evaluation', async () => {
   let evaluated = false;
   const session = { send: async method => {

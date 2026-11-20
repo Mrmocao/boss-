@@ -1,29 +1,54 @@
 import { readFile, writeFile, mkdir, readdir, rename, unlink } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { projectRoot } from './config.mjs';
-import { MonitorStore } from './monitor-store.mjs';
+import { projectRoot, profilePorts } from './config.mjs';
+import { MonitorStore,renameWithRetry } from './monitor-store.mjs';
 import { MonitorBrowser } from './monitor-browser.mjs';
 import { ingestSnapshot, dueConversations, applyModelResult, markHandoff } from './monitor-core.mjs';
 import { getModelSettings, proposeReply } from './monitor-model.mjs';
+import { applySkillConfig } from './skill-config.mjs';
+import {loadWorkflowPolicy,planWorkflow,recoverWorkflow,recordPlan,incomingBatch,questionnaireUrl,questionnaireExpiresAt} from './recruiting-workflow.mjs';
+import {analyzeWorkflow} from './workflow-model.mjs';
+import {executeServicePlan} from './service-sender.mjs';
+import {rejectResumeRequest} from './attachment-action.mjs';
+import {consumeMailbox} from './mail-receipts.mjs';
+import {executeAssessmentFile} from './assessment-file.mjs';
+import {shouldInspectConversation} from './recent-conversations.mjs';
+import {assessmentRevision} from './dashboard-settings.mjs';
+import {reviewIdleHandoff,HUMAN_REPLY_TIMEOUT_MS} from './handoff-recovery.mjs';
+import {archiveInactiveConversations} from './conversation-retention.mjs';
+import {readJobProfiles,contextForJob} from './job-settings.mjs';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const iso = () => new Date().toISOString();
-export const monitorRoot = join(projectRoot, '.local', 'monitor', 'company-2');
-const commands = new Set(['pause', 'resume', 'stop', 'takeover', 'resume-conversation', 'retry-model']);
-export async function readMonitorConfig() {
-  const config = JSON.parse(await readFile(join(projectRoot, 'config', 'monitor.json'), 'utf8'));
-  // This pilot deliberately has no send path. Reject accidental attempts to enable it.
-  if (config.profile !== 'company-2' || !config.expectedAccountDisplayName || config.mode !== 'observe_and_draft'
-    || config.allowSend !== false || config.allowInterview !== false || config.allowAssessment !== false
+export const monitorRootForProfile = profile => join(projectRoot, '.local', 'monitor', profile);
+const configuredProfile = (() => {
+  try {
+    const config = JSON.parse(readFileSync(join(projectRoot, 'config', 'monitor.json'), 'utf8'));
+    return Object.hasOwn(profilePorts, config.profile) ? config.profile : 'company-2';
+  } catch { return 'company-2'; }
+})();
+export const monitorRoot = monitorRootForProfile(configuredProfile);
+const commands = new Set(['pause', 'resume', 'stop', 'takeover', 'resume-conversation', 'retry-model','human-reply','human-draft']);
+export async function readMonitorConfig(configPath = join(projectRoot, 'config', 'monitor.json')) {
+  const config = JSON.parse(await readFile(configPath, 'utf8'));
+  const automatic=config.mode==='automatic';
+  if(config.autoResumeHandoff!==undefined&&typeof config.autoResumeHandoff!=='boolean')throw Object.assign(new Error('Invalid recovery policy'),{code:'MONITOR_CONFIG_INVALID'});
+  if(config.humanReplyTimeoutMs!==undefined&&(!Number.isInteger(config.humanReplyTimeoutMs)||config.humanReplyTimeoutMs<HUMAN_REPLY_TIMEOUT_MS))throw Object.assign(new Error('Recovery timeout must be at least ten minutes'),{code:'MONITOR_CONFIG_INVALID'});
+  if (!Object.hasOwn(profilePorts, config.profile) || !config.expectedAccountDisplayName || !['observe_and_draft','automatic'].includes(config.mode)
+    || config.allowSend !== automatic || config.allowInterview !== false || (typeof config.allowAssessment!=='boolean')
     || !Array.isArray(config.acceptedTitles) || !config.acceptedTitles.length
-    || !Number.isInteger(config.maxConversations) || config.maxConversations < 1 || config.maxConversations > 3
+    || !Number.isInteger(config.maxConversations) || config.maxConversations < 1 || config.maxConversations > (automatic?1000:3)
     || !Number.isInteger(config.tickMs) || config.tickMs < 1000 || config.tickMs > 10000
-    || !Number.isInteger(config.debounceMs) || config.debounceMs < 1000
+    || !Number.isInteger(config.debounceMs) || config.debounceMs < (automatic?30000:1000)
     || !Number.isInteger(config.reconcileMs) || config.reconcileMs < 120000 || config.reconcileMs > 300000)
     throw Object.assign(new Error('Invalid pilot configuration'), { code:'MONITOR_CONFIG_INVALID' });
-  return config;
+  const effective=await applySkillConfig(config, projectRoot);
+  if(config.mode!=='automatic')return effective;
+  const jobProfiles=await readJobProfiles();
+  return {...effective,jobProfiles,acceptedTitles:jobProfiles.jobs.flatMap(job=>job.acceptedTitles)};
 }
 
 export async function importSeed(store, config, folder = join(projectRoot, '.local', 'validation', 'yesterday-conversation-20261106')) {
@@ -59,17 +84,19 @@ export async function importSeed(store, config, folder = join(projectRoot, '.loc
 async function atomicJson(path, value) {
   const temp = `${path}.${randomUUID()}.tmp`;
   await writeFile(temp, JSON.stringify(value, null, 2) + '\n', {encoding:'utf8', flag:'wx'});
-  await rename(temp, path);
+  await renameWithRetry(temp, path);
 }
 
-export async function queueCommand(command, conversationId, root = monitorRoot) {
+export async function queueCommand(command, conversationId, root = monitorRoot, payload = {}) {
   if (!commands.has(command)) throw new Error('Unknown monitor command');
   const live = await readStatus(root);
   if (!live.running) throw Object.assign(new Error('Monitor is not running'), {code:'MONITOR_OFFLINE'});
   const id = randomUUID();
   const dir = join(root, 'commands');
   await mkdir(dir, {recursive:true});
-  await atomicJson(join(dir, `${id}.json`), {id, command, conversationId, createdAt:iso(), runId:live.runtime.runId});
+  if(command==='human-reply' && (typeof payload.text!=='string'||!payload.text.trim()||payload.text.length>1500||typeof payload.fingerprint!=='string'))throw Object.assign(new Error('Invalid reply'),{code:'INVALID_REPLY'});
+  if(command==='human-draft'&&typeof payload.hasDraft!=='boolean')throw Object.assign(new Error('Invalid draft activity'),{code:'INVALID_DRAFT_ACTIVITY'});
+  await atomicJson(join(dir, `${id}.json`), {id, command, conversationId, text:payload.text, fingerprint:payload.fingerprint,hasDraft:payload.hasDraft, createdAt:iso(), runId:live.runtime.runId});
   return id;
 }
 
@@ -124,6 +151,14 @@ export async function processCommands(store, browser, root, runId, config) {
       await store.transaction(state => {
         const c = state.conversations[request.conversationId];
         switch (request.command) {
+          case 'human-draft':
+            if(!c?.admitted||typeof request.hasDraft!=='boolean')throw Object.assign(new Error('Invalid draft activity'),{code:'INVALID_DRAFT_ACTIVITY'});
+            if(!c.human_handoff&&request.hasDraft)markHandoff(state,c.id,'explicit_manual_takeover');
+            c.handoff={...c.handoff,draftPresent:request.hasDraft,lastActivityAt:iso(),reviewVersion:(c.handoff?.reviewVersion||0)+1};break;
+          case 'human-reply':
+            if(!c?.human_handoff||c.fingerprint!==request.fingerprint||typeof request.text!=='string'||!request.text.trim()||request.text.length>1500)throw Object.assign(new Error('Reply context changed'),{code:'REPLY_CONTEXT_CHANGED'});
+            c.humanReply={id:request.id,text:request.text.trim(),fingerprint:request.fingerprint,queuedAt:iso()};
+            c.handoff={...c.handoff,replyQueued:true,draftPresent:false,lastActivityAt:iso(),reviewVersion:(c.handoff?.reviewVersion||0)+1};break;
           case 'pause': state.controls.paused = true; break;
           case 'resume': state.controls.paused = false; break;
           case 'stop': state.controls.stopRequested = true; break;
@@ -132,6 +167,7 @@ export async function processCommands(store, browser, root, runId, config) {
             markHandoff(state, c.id, 'explicit_manual_takeover'); break;
           case 'resume-conversation':
             c.human_handoff = false; c.status = 'waiting_reply'; c.needsDetail = true;
+            c.handoff={...c.handoff,resolvedAt:iso(),replyQueued:false,draftPresent:false,autoResumeBlocked:false,reviewVersion:(c.handoff?.reviewVersion||0)+1};delete c.humanReply;
             delete c.handoffReason;
             const last = (c.messages || []).findLast(m => ['incoming','outgoing','unknown'].includes(m.direction));
             c.pendingAt = last?.direction === 'incoming' ? Date.now() : null;
@@ -158,7 +194,7 @@ export async function processCommands(store, browser, root, runId, config) {
 const cell = value => String(value ?? '—').replace(/[|\r\n]/g, ' ');
 export async function writeWorkbench(state, root) {
   const lines = ['# 招聘监听工作台', '', `更新时间：${iso()}`, '',
-    `运行状态：${state.runtime.health}；人工全局暂停：${!!state.controls.paused}；发送：关闭。`, '',
+    `运行状态：${state.runtime.health}；人工全局暂停：${!!state.controls.paused}；自动发送：${state.runtime.sendEnabled?'开启':'关闭'}。`, '',
     '覆盖：仅网页当前渲染的会话列表和聊天窗口，未证明全量覆盖。', '',
     '|候选人|岗位|状态|人工接管|补问次数|会话 ID|', '|---|---|---|---|---|---|'];
   for (const c of Object.values(state.conversations).filter(c => c.admitted !== false))
@@ -176,32 +212,72 @@ export async function writeWorkbench(state, root) {
   }
   const temp = join(root, 'workbench.tmp.md');
   await writeFile(temp, lines.join('\n') + '\n', 'utf8');
-  await rename(temp, join(root, 'workbench.md'));
+  await renameWithRetry(temp, join(root, 'workbench.md'));
 }
 
 export async function runMonitor({once = false, root = monitorRoot, config,
-  browser, model = proposeReply} = {}) {
+  browser, model = proposeReply, analyzer=analyzeWorkflow, sender=executeServicePlan, policy} = {}) {
   config ??= await readMonitorConfig();
   browser ??= new MonitorBrowser(config);
   const store = await new MonitorStore(root).init();
   const runId = randomUUID();
   let stopped = false, connected = false, lastReconcile = 0, retryAt = 0, failures = 0;
+  let lastMailRead=0;
   const stop = () => { stopped = true; };
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
   try {
+    if(config.mode==='automatic')policy??=await loadWorkflowPolicy();
     await importSeed(store, config);
     const rulesText = await readFile(resolve(projectRoot, config.rulesFile), 'utf8');
     await store.transaction(state => {
       state.controls.stopRequested = false;
+      archiveInactiveConversations(state,config);
       for (const c of Object.values(state.conversations))
-        if (c.admitted !== false && !c.human_handoff) c.needsDetail = true;
+        if (c.admitted !== false) {
+          if(c.human_handoff&&!c.handoff?.openedAt)c.handoff={...c.handoff,openedAt:iso()};
+          c.needsDetail=true;if(config.mode==='automatic'){recoverWorkflow(c,state.sentIntents);if(c.pendingAt!==null)c.pendingAt=Date.now();}
+        }
       state.runtime = {...state.runtime, pid:process.pid, runId, startedAt:iso(), stoppedAt:null, health:'starting', mode:config.mode,
-        profile:config.profile, sendEnabled:false, modelEnabled:!!config.model.enabled,
-        modelReady:!!config.model.enabled && getModelSettings(config).ready};
+        profile:config.profile, sendEnabled:config.mode==='automatic'&&config.allowSend, modelEnabled:!!config.model.enabled,
+        handoffAutoResumeEnabled:config.autoResumeHandoff===true,humanReplyTimeoutMs:config.humanReplyTimeoutMs||HUMAN_REPLY_TIMEOUT_MS,
+        modelReady:!!config.model.enabled && getModelSettings(config).ready,
+        capabilities:config.mode==='automatic'?{quietPeriodMs:config.debounceMs,assessmentDelivery:config.assessment?.delivery||'file',assessmentFileConfigured:!!config.assessment?.filePath,assessmentLinkReady:!!questionnaireUrl(config),assessmentExpiresAt:questionnaireExpiresAt(config),mailbox:'awaiting_configuration'}:undefined};
     });
     do {
+      if(config.jobProfiles){
+        const profiles=await readJobProfiles();
+        if(config.jobProfiles.revision!==profiles.revision){
+          const previous=config;
+          config={...config,jobProfiles:profiles,acceptedTitles:profiles.jobs.flatMap(job=>job.acceptedTitles)};
+          await store.transaction(s=>{
+            for(const c of Object.values(s.conversations)){
+              if(c.status!=='blocked_config'||c.workflow?.stage!=='test_pending'||c.human_handoff)continue;
+              const before=contextForJob(previous,policy,c.jobTitle),after=contextForJob(config,policy,c.jobTitle);
+              if(after.policy.job&&before.config.assessment?.url!==after.config.assessment?.url){
+                c.needsDetail=true;c.pendingAt=Date.now();c.processedFingerprint=null;
+              }
+            }
+          });
+        }
+      }
+      if(config.model?.configFile){
+        try{
+          const latest=await applySkillConfig(config,projectRoot),before=assessmentRevision(config.assessment),revision=assessmentRevision(latest.assessment),workflowChanged=JSON.stringify(config.workflow||{})!==JSON.stringify(latest.workflow||{});
+          if(before!==revision||workflowChanged){
+            config={...config,assessment:latest.assessment,workflow:latest.workflow};
+            await store.transaction(s=>{
+              s.runtime.assessmentRevision=revision;
+              s.runtime.workflowConfigRevision=workflowChanged?JSON.stringify(latest.workflow||{}).length:null;
+              s.runtime.capabilities={...s.runtime.capabilities,assessmentDelivery:config.assessment?.delivery,assessmentFileConfigured:!!config.assessment?.filePath,assessmentLinkReady:!!questionnaireUrl(config),assessmentExpiresAt:questionnaireExpiresAt(config)};
+              for(const c of Object.values(s.conversations))if(c.status==='blocked_config'&&c.workflow?.stage==='test_pending'&&!c.human_handoff){c.needsDetail=true;c.pendingAt=Date.now();c.processedFingerprint=null;}
+            });
+          }else if(!store.snapshot().runtime.assessmentRevision)await store.transaction(s=>{s.runtime.assessmentRevision=revision;});
+        }catch{ /* Keep last valid config; settings UI reports parse/save errors separately. */ }
+      }
       await processCommands(store, browser, root, runId, config);
       if (store.snapshot().controls.stopRequested || stopped) break;
+      await store.transaction(s=>archiveInactiveConversations(s,config));
+      if(config.mode==='automatic'&&Date.now()-lastMailRead>15000){try{await consumeMailbox(store);lastMailRead=Date.now();}catch{await store.transaction(s=>{s.runtime.mailbox={status:'read_error'};});}}
       try {
         if (!store.snapshot().controls.paused && Date.now() >= retryAt) {
           let snapshot;
@@ -214,15 +290,53 @@ export async function runMonitor({once = false, root = monitorRoot, config,
           }
           else if (Date.now() - lastReconcile >= config.reconcileMs) { snapshot = await browser.scanStep(); lastReconcile = Date.now(); }
           else snapshot = await browser.poll();
-          await store.transaction(s => ingestSnapshot(s, snapshot, config));
+          await store.transaction(s => {ingestSnapshot(s, snapshot, config);archiveInactiveConversations(s,config);if(snapshot.coverage?.scanStopReason)s.runtime.lastScan={...snapshot.coverage,checkedAt:iso()};});
+          if(config.mode==='automatic'&&config.autoResumeHandoff){
+            const recovery=await reviewIdleHandoff({store,browser,config,policy,analyzer,processControls:()=>processCommands(store,browser,root,runId,config)});
+            if(recovery.reviewed){snapshot=await browser.poll({force:true});await store.transaction(s=>ingestSnapshot(s,snapshot,config));}
+          }
           const candidate = Object.values(store.snapshot().conversations).find(c => c.admitted !== false
-            && c.needsDetail && !c.human_handoff && snapshot.rows.some(row => row.domRowId === c.domRowId));
+            && config.acceptedTitles.includes(c.jobTitle) && c.needsDetail && shouldInspectConversation(c,config) && (!c.human_handoff||c.humanReply) && snapshot.rows.some(row => row.domRowId === c.domRowId));
           if (candidate && !snapshot.activity.typing && Date.now() - snapshot.activity.lastHumanAt > 15000) {
             snapshot = await browser.openConversation(candidate);
             await store.transaction(s => ingestSnapshot(s, snapshot, config));
           }
           for (const c of dueConversations(store.snapshot(), config)) {
             if (store.snapshot().controls.paused || store.snapshot().controls.stopRequested) break;
+            await store.transaction(s=>{s.runtime.heartbeatAt=iso();});
+            if(config.mode==='automatic') {
+              try {
+                if(snapshot.selectedRow?.domRowId!==c.id){snapshot=await browser.openConversation(c);await store.transaction(s=>ingestSnapshot(s,snapshot,config));}
+                let current=store.snapshot().conversations[c.id];
+                if(!dueConversations(store.snapshot(),config).some(x=>x.id===c.id))continue;
+                const fingerprint=current.fingerprint;
+                let analysis;
+                if(/薪资|薪酬|工资|奖金|待遇|加班|几薪|双休|社保|公积金/.test(incomingBatch(current))) {
+                  await store.transaction(s=>markHandoff(s,c.id,'薪资或公司政策问题，等待人工回复'));continue;
+                }
+                const {config:jobConfig,policy:jobPolicy}=contextForJob(config,policy,current.jobTitle);
+                analysis=await analyzer({config:jobConfig,conversation:current,policy:jobPolicy});
+                snapshot=await browser.poll({force:true});await store.transaction(s=>ingestSnapshot(s,snapshot,config));
+                await processCommands(store,browser,root,runId,config);
+                current=store.snapshot().conversations[c.id];
+                if(current.fingerprint!==fingerprint||!dueConversations(store.snapshot(),config).some(x=>x.id===c.id))continue;
+                const plan=planWorkflow(current,analysis,jobPolicy,jobConfig,store.snapshot().sentIntents);
+                await store.transaction(s=>recordPlan(s,c.id,fingerprint,plan,analysis));
+                if(plan.type==='reject_attachment') {
+                  await rejectResumeRequest({store,browser,conversation:current,config});
+                  snapshot=await browser.poll({force:true});await store.transaction(s=>ingestSnapshot(s,snapshot,config));
+                  await store.transaction(s=>{const c=s.conversations[current.id];c.pendingAttachmentGuidance={nextStage:plan.nextStage};c.pendingAt=Date.now();c.lastInboundObservedAt=Date.now();c.processedFingerprint=null;});
+                  const fresh=store.snapshot().conversations[c.id];
+                  if(incomingBatch(fresh)!==incomingBatch(current))continue;
+                  // Attachment cards may be the only incoming event; send guard refuses ambiguous direction.
+                  await sender({store,browser,config:jobConfig,conversationId:c.id,fingerprint:fresh.fingerprint,plan:{...plan,type:'send'},processControls:()=>processCommands(store,browser,root,runId,config)});
+                } else if(plan.type==='send_file')await executeAssessmentFile({store,browser,config:jobConfig,conversationId:c.id,fingerprint,plan,textSender:sender,processControls:()=>processCommands(store,browser,root,runId,config)});
+                else if(plan.type==='send')await sender({store,browser,config:jobConfig,conversationId:c.id,fingerprint,plan,processControls:()=>processCommands(store,browser,root,runId,config)});
+              } catch(e) {
+                if(!['CONTEXT_CHANGED','QUIET_PERIOD_PENDING','WAITING_FOR_PEER','OBSERVATION_CHANGED','DETAIL_CHANGED','CONVERSATION_MISMATCH','HUMAN_ACTIVE'].includes(e.code))await store.transaction(s=>{if(!s.conversations[c.id]?.human_handoff)markHandoff(s,c.id,e.code||'自动处理异常');});
+              }
+              continue;
+            }
             let result;
             if (!config.model.enabled || !getModelSettings(config).ready)
               result = {status:'unconfigured', reason:'模型接口尚未配置，保留消息等待人工处理'};
@@ -241,6 +355,15 @@ export async function runMonitor({once = false, root = monitorRoot, config,
             if (!store.snapshot().controls.paused && !store.snapshot().controls.stopRequested)
               await store.transaction(s => applyModelResult(s, c.id, c.fingerprint, result));
           }
+          if(config.mode==='automatic')for(const c of Object.values(store.snapshot().conversations).filter(c=>c.human_handoff&&c.humanReply)) {
+            if(Date.now()-(c.lastInboundObservedAt||Date.now())<config.debounceMs)continue;
+            try {
+              if(snapshot.selectedRow?.domRowId!==c.id)snapshot=await browser.openConversation(c);
+              const plan={type:'send',messageId:'HUMAN',humanReply:true,text:c.humanReply.text,nextStage:c.workflow?.stage||'screening'};
+              await sender({store,browser,config,conversationId:c.id,fingerprint:c.humanReply.fingerprint,plan,processControls:()=>processCommands(store,browser,root,runId,config)});
+              await store.transaction(s=>{delete s.conversations[c.id].humanReply;});
+            }catch(e){await store.transaction(s=>{delete s.conversations[c.id].humanReply;s.conversations[c.id].handoff.replyQueued=false;markHandoff(s,c.id,'人工回复未发送或结果待核对：'+(e.code||'FAILED'));});}
+          }
           failures = 0; retryAt = 0;
           await store.transaction(s => { Object.assign(s.runtime, {health:'observing', lastObservationAt:iso(),
             coverage:snapshot.coverage, targetId:browser.target?.id, lastError:null}); });
@@ -256,7 +379,7 @@ export async function runMonitor({once = false, root = monitorRoot, config,
           Object.assign(s.runtime, {health:transient ? 'waiting_stable_page' : 'disconnected', lastError:code, retryAt});
         });
       }
-      await store.transaction(s => { s.runtime.heartbeatAt = iso(); if (s.controls.paused) s.runtime.health = 'paused'; });
+      await store.transaction(s => { s.runtime.jobProfilesRevision=config.jobProfiles?.revision;s.runtime.heartbeatAt = iso();s.runtime.recentWindowHours=config.recentWindowHours||null;s.runtime.recentQueueCount=Object.values(s.conversations).filter(c=>c.admitted&&!c.human_handoff&&shouldInspectConversation(c,config)).length; if (s.controls.paused) s.runtime.health = 'paused'; });
       await writeWorkbench(store.snapshot(), root);
       if (!once && !stopped) await delay(config.tickMs);
     } while (!once && !stopped);
@@ -269,20 +392,27 @@ export async function runMonitor({once = false, root = monitorRoot, config,
 }
 
 async function main() {
-  const [command = 'status', id] = process.argv.slice(2);
-  if (command === 'run') return runMonitor({once:process.argv.includes('--once')});
-  if (command === 'status') return console.log(JSON.stringify(await readStatus(), null, 2));
+  const args = process.argv.slice(2);
+  const command = args[0] || 'status';
+  const id = args[1];
+  const option = name => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] : undefined; };
+  const profile = option('--profile');
+  const root = option('--root') || (profile ? monitorRootForProfile(profile) : monitorRoot);
+  const configPath = option('--config');
+  const config = configPath ? await readMonitorConfig(configPath) : undefined;
+  if (command === 'run') return runMonitor({once:args.includes('--once'),root,config});
+  if (command === 'status') return console.log(JSON.stringify(await readStatus(root), null, 2));
   if (commands.has(command)) {
-    const requestId = await queueCommand(command, id);
+    const requestId = await queueCommand(command, id, root);
     for (let i=0; i<15; i++) {
-      try { const receipt = JSON.parse(await readFile(join(monitorRoot, 'receipts', `${requestId}.json`), 'utf8'));
+      try { const receipt = JSON.parse(await readFile(join(root, 'receipts', `${requestId}.json`), 'utf8'));
         console.log(JSON.stringify(receipt)); if (!receipt.ok) process.exitCode = 1; return; }
       catch (e) { if (e.code !== 'ENOENT') throw e; }
       await delay(1000);
     }
     console.log(JSON.stringify({queued:true, requestId, note:'处理尚未完成，请稍后查看 status 和 receipts'})); return;
   }
-  throw new Error('Usage: monitor-daemon.mjs run [--once] | status | pause | resume | stop | takeover ID | resume-conversation ID | retry-model ID');
+  throw new Error('Usage: monitor-daemon.mjs run|status [--profile PROFILE] [--root ROOT] [--config CONFIG]');
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href)
   main().catch(e => { console.error(JSON.stringify({error:e.code || 'MONITOR_FAILED'})); process.exitCode = 1; });

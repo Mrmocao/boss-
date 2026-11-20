@@ -25,18 +25,23 @@ const detailProbe = `(() => {
       if (!visible(e)) return null;
       const friend = !!e.querySelector('.item-friend');
       const myself = !!e.querySelector('.item-myself');
-      const system = !!e.querySelector('.item-system,.message-card-wrap');
-      const content = e.querySelector('.text-content')?.innerText?.trim() || null;
+      const fileNode=e.querySelector('.file-name,.file-title,.attachment-name,a[download]');
+      const fileName=fileNode?(fileNode.getAttribute('download')||fileNode.innerText||'').trim():null;
+      const system = !fileName && !!e.querySelector('.item-system,.message-card-wrap');
+      const content = fileName || e.querySelector('.text-content')?.innerText?.trim() || null;
       const timestamp = e.querySelector('.message-time')?.innerText?.trim() || null;
       const raw = e.innerText?.trim() || '';
       return { localIndex:index, direction:system ? 'system' : friend && !myself ? 'incoming' : myself && !friend ? 'outgoing' : 'unknown',
-        kind:system ? 'system_card' : content ? 'text' : 'unknown', text:content, displayText:raw.slice(0,4000),
+        kind:system ? 'system_card' : fileName ? 'attachment' : content ? 'text' : 'unknown', text:content, displayText:raw.slice(0,4000),
         observedTime:timestamp, identityConfidence:'dom_order_unverified', sourceLocator:'.chat-message-list .message-item', sourceDomIndex:index };
     }).filter(Boolean);
   const resumeButton = Array.from(conversation.querySelectorAll('.resume-btn-online')).find(visible);
   return { account:{displayName:document.querySelector('.top-profile-logout .user-name')?.innerText?.trim() || null, identityConfidence:'display_only'},
     selected:{domRowId:id,name,jobTitle:job}, candidate:{name, summaryText:infoText, profileText:history, expectedText:expectText,
       educationText:(history || '').split(/\\n/).map(x => x.trim()).filter(x => /·.*·\\s*(?:本科|硕士|博士|大专|专科)/.test(x)), onlineResumeVisible:!!resumeButton, attachmentButtonVisible:!!conversation.querySelector('.resume-btn-file')},
+    attachmentRequests:Array.from(conversation.querySelectorAll('.message-card-wrap')).filter(visible).map((e,index)=>({
+      index,messageIndex:Array.from(conversation.querySelectorAll('.chat-message-list .message-item')).indexOf(e.closest('.message-item')),text:(e.innerText||'').trim(),status:Array.from(e.querySelectorAll('button,a,[role="button"],.btn')).some(b=>visible(b)&&/^(拒绝|拒收)$/.test(b.innerText.trim()))?'pending':'unknown'
+    })).filter(e=>/简历/.test(e.text)&&e.status==='pending'),
     messages:messageItems, readWindow:{loadedCount:messageItems.length, oldestVisible:messageItems[0]?.observedTime || null,
       newestVisible:messageItems.at(-1)?.observedTime || null, hasOlderUnloaded:'unknown', hasNewerUnloaded:'unknown'},
     sideEffects:['may_mark_read'], sourceUrl:new URL(p.url).origin+new URL(p.url).pathname };

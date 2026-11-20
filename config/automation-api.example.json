@@ -1,0 +1,6 @@
+{
+  "enabled": false,
+  "host": "127.0.0.1",
+  "port": 19338,
+  "token": "REPLACE_WITH_GENERATED_TOKEN_FROM_API_INIT_COMMAND"
+}

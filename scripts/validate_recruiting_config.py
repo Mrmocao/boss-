@@ -249,8 +249,11 @@ def validate_config(job_path=DEFAULT_JOB, messages_path=DEFAULT_MESSAGES):
     questionnaire = mapping(job_doc, "questionnaire", ("name", "format", "fixed_url", "link_status", "deadline_hours", "reminders", "collection_email", "required_files", "receipt_mode", "chat_claim_is_receipt"))
     enum(questionnaire.get("link_status"), {"missing", "review_pending", "unverified", "verified", "approved", "expired"}, "questionnaire.link_status")
     url = questionnaire.get("fixed_url")
+    delivery = questionnaire.get("delivery", "link")
+    enum(delivery, {"file", "link"}, "questionnaire.delivery")
     if url is None:
-        block("questionnaire.fixed_url", "缺少固定问卷链接")
+        if delivery == "link":
+            block("questionnaire.fixed_url", "缺少固定问卷链接")
     elif not isinstance(url, str):
         error("questionnaire.fixed_url", "必须是 HTTPS 字符串或 null")
     else:
@@ -262,8 +265,13 @@ def validate_config(job_path=DEFAULT_JOB, messages_path=DEFAULT_MESSAGES):
             error("questionnaire.fixed_url", "必须是真实 HTTPS 链接，不能含账号密码或占位符")
         if parsed.hostname in {"example.com", "example.org", "example.net", "localhost"} or (parsed.hostname or "").endswith(".invalid"):
             error("questionnaire.fixed_url", "不能使用示例或占位域名")
-    if questionnaire.get("link_status") not in ("verified", "approved"):
+    if delivery == "link" and questionnaire.get("link_status") not in ("verified", "approved"):
         block("questionnaire.link_status", "问卷链接未确认有效")
+    if delivery == "file":
+        if questionnaire.get("file_config_source") != "skill.assessment.filePath":
+            error("questionnaire.file_config_source", "文件模式需引用 skill.assessment.filePath")
+        if "assessment_file_delivery" not in verified_caps:
+            block("execution.verified_capabilities", "文件发送与真实平台回执尚未验收 assessment_file_delivery")
     email = questionnaire.get("collection_email")
     if not isinstance(email, str) or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
         error("questionnaire.collection_email", "邮箱格式无效")

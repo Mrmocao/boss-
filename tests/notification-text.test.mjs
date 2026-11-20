@@ -1,0 +1,2 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {describeNotification,notificationText} from '../src/notification-text.mjs';
+test('notification dictionary produces Chinese labels for known and fallback events',()=>{assert.equal(notificationText('human_handoff','salary'),'候选人咨询薪资或公司政策');assert.equal(notificationText('unknown_event','PAGE_CHANGED'),'流程状态发生变化');const n=describeNotification({type:'submission_complete',reason:null});assert.equal(n.displayType,'问卷和简历已收齐，等待批改');});

@@ -23,5 +23,5 @@ try {
     const {binding,bindingPath}=await resolveRecruiterTarget({config,
       expectedAccountDisplayName:options['--account'],targetId:options['--target']});
     console.log(JSON.stringify({binding,bindingPath,sendsMessages:false},null,2));
-  } else throw new Error('Usage: list | bind --profile company-2 [--account NAME] [--target ID]');
+  } else throw new Error('Usage: list | bind --profile company-2|company-3 [--account NAME] [--target ID]');
 } catch(e) {console.error(JSON.stringify({code:e.code || 'INVALID_COMMAND',message:e.message,targets:e.targets}));process.exitCode=1;}

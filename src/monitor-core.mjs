@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
+import {isRecentRow,shouldInspectConversation} from './recent-conversations.mjs';
 
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fail = (code, message) => { throw Object.assign(new Error(message), {code}); };
 const identity = row => ['domRowId','name','jobTitle'].map(k=>row?.[k]);
-const messageKey = m => hash([m.direction,m.kind,m.text || m.displayText || '',m.observedTime || null]);
+// Display times/receipt labels can change without a new message.
+const messageKey = m => hash([m.direction,m.kind,m.text || m.displayText || '']);
 // Display-time labels roll over without a new message (e.g. yesterday -> Friday).
 const rowFingerprint = row => hash([row.lastMessagePreview ?? null]);
 const eligible = (record,config) => config.acceptedTitles.includes(record.jobTitle);
@@ -19,7 +21,8 @@ function initialize(record) {
   record.id ??= record.domRowId;
   record.admitted ??= true;
   record.facts ??= {}; record.evidence ??= []; record.questionsAsked ??= [];
-  record.clarificationCount ??= {}; record.knownOutboundContents ??= [];
+  if (!Number.isInteger(record.clarificationCount)) record.clarificationCount = 0;
+  record.knownOutboundContents ??= [];
   record.human_handoff ??= false; record.status ??= 'pending_information';
   record.pendingAt ??= null; record.processedFingerprint ??= null;
 }
@@ -27,8 +30,14 @@ function initialize(record) {
 export function markHandoff(state,id,reason,now=Date.now()) {
   const record=state.conversations[id]; if (!record) return false;
   initialize(record);
+  const newCycle=!record.human_handoff;
   record.human_handoff=true; record.status='human_review'; record.handoffReason=reason;
   record.pendingAt=null; record.needsDetail=false;
+  record.handoff = {...record.handoff, reason, openedAt:newCycle?timestamp(now):record.handoff?.openedAt||timestamp(now), resolvedAt:null,
+    reviewVersion:(record.handoff?.reviewVersion||0)+1,
+    ...(newCycle?{nextReviewAt:null,reviewStatus:null,reviewReason:null}:{}),
+    ...(reason==='explicit_manual_takeover'?{lastActivityAt:timestamp(now)}:{})};
+  if(/send_unknown|SEND_RECEIPT_UNKNOWN|发送结果不明|IDENTITY|ACCOUNT|message_window_discontinuity|身份|账号|禁止.*重发/.test(reason||''))record.handoff.autoResumeBlocked=true;
   notifyOnce(state,`handoff:${id}:${reason}`,{type:'human_handoff',conversationId:id,reason,observedAt:timestamp(now)});
   return true;
 }
@@ -42,6 +51,7 @@ export function ingestSnapshot(state,snapshot,config,now=Date.now()) {
   for (const row of snapshot.rows) {
     if (!identity(row).every(v=>typeof v==='string' && v) || seen.has(row.domRowId)) fail('IDENTITY_INVALID','Row identity is missing or duplicated.');
     seen.add(row.domRowId);
+    if(state.archivedConversations?.[row.domRowId])continue;
     const prior=state.conversations[row.domRowId];
     if (prior && identity(prior).some((v,i)=>v!==identity(row)[i])) fail('IDENTITY_CHANGED','Candidate name or position changed under a known row id.');
   }
@@ -55,22 +65,27 @@ export function ingestSnapshot(state,snapshot,config,now=Date.now()) {
   }
   state.account={...state.account,...snapshot.account}; state.runtime ??= {};
   const baseline=!state.runtime.listBaselineEstablished;
-  const max=Math.min(3,Math.max(0,Number.isInteger(config.maxConversations)?config.maxConversations:3));
+  const max=Math.min(config.mode==='automatic'?1000:3,Math.max(0,Number.isInteger(config.maxConversations)?config.maxConversations:3));
   let admitted=Object.values(state.conversations).filter(r=>r.admitted!==false).length;
   const admittedIds=[],changedIds=[];
   for (const row of snapshot.rows) {
+    if(state.archivedConversations?.[row.domRowId])continue;
     let record=state.conversations[row.domRowId]; const existing=!!record;
     const current=rowFingerprint(row);
     // Recompute from the stored row to migrate older time-sensitive fingerprints safely.
     const changed=existing && record.row && rowFingerprint(record.row)!==current;
     const unreadIncreased=existing && Number(row.unreadCount || 0)>Number(record.row?.unreadCount || 0);
-    if (!record) record=state.conversations[row.domRowId]={id:row.domRowId,...Object.fromEntries(['domRowId','name','jobTitle'].map(k=>[k,row[k]])),admitted:false};
+    if (!record) record=state.conversations[row.domRowId]={id:row.domRowId,...Object.fromEntries(['domRowId','name','jobTitle'].map(k=>[k,row[k]])),admitted:false,firstObservedAt:timestamp(now)};
     initialize(record);
     const newEvent=!baseline && (!existing || changed || unreadIncreased);
-    if (newEvent && !record.admitted && eligible(record,config) && admitted<max) {
+    if(existing&&(changed||unreadIncreased))record.lastLiveChangeAt=now;
+    const recent=isRecentRow(row,config,now,record);
+    if (recent&&(newEvent || (config.mode==='automatic' && config.processExistingUnread && Number(row.unreadCount)>0)) && !record.admitted && eligible(record,config) && admitted<max) {
       record.admitted=true; admitted++; admittedIds.push(record.id);
+      record.admittedAt=timestamp(now);
+      record.needsDetail=true;record.pendingAt=now;
     }
-    if (record.admitted && eligible(record,config) && newEvent && !record.human_handoff && record.status!=='stopped') {
+    if (recent&&record.admitted && eligible(record,config) && newEvent && !record.human_handoff && record.status!=='stopped') {
       record.needsDetail=true; record.pendingAt=now; changedIds.push(record.id);
     }
     record.row=structuredClone(row); record.rowFingerprint=current; record.lastObservedAt=timestamp(now);
@@ -78,24 +93,34 @@ export function ingestSnapshot(state,snapshot,config,now=Date.now()) {
   state.runtime.listBaselineEstablished=true;
   state.runtime.lastObservedAt=timestamp(now); state.runtime.coverage=structuredClone(snapshot.coverage || {});
   const lastHumanAt=Number(snapshot.activity?.lastHumanAt || 0);
-  state.runtime.humanActive=!!snapshot.activity?.typing || (lastHumanAt>0 && now-lastHumanAt<15_000);
+  state.runtime.lastHumanActivityAt=Math.max(state.runtime.lastHumanActivityAt||0,lastHumanAt);
+  state.runtime.hasHumanDraft=!!snapshot.activity?.typing||!!snapshot.activity?.hasDraft;
+  state.runtime.humanActive=!!snapshot.activity?.typing || (lastHumanAt>0 && now-lastHumanAt<15_000)
+    || (snapshot.activity?.humanConversationIds||[]).length>0
+    || ((snapshot.activity?.manualConversationIds||[]).length>0 && lastHumanAt>0 && now-lastHumanAt<15_000);
   if (snapshot.activity?.observerReset) {
     state.controls.paused=true;
     notifyOnce(state,'observer_reset',{type:'human_handoff',reason:'observer_reset',observedAt:timestamp(now)});
   }
   const humanIds=new Set([...(snapshot.activity?.humanConversationIds || []),...(snapshot.activity?.manualConversationIds || [])]);
   if (snapshot.activity?.typing && snapshot.selectedRow?.domRowId) humanIds.add(snapshot.selectedRow.domRowId);
-  for (const id of humanIds) markHandoff(state,id,'human_activity',now);
+  for (const id of humanIds) {
+    const record=state.conversations[id];
+    if (record) {
+      record.temporaryHumanPauseUntil=now+15_000;
+      if(record.human_handoff&&lastHumanAt>0)record.handoff={...record.handoff,lastActivityAt:timestamp(Math.max(Date.parse(record.handoff?.lastActivityAt)||0,lastHumanAt))};
+    }
+  }
   if (detail) {
     const record=state.conversations[detail.selected.domRowId];
-    if (record.admitted && eligible(record,config)) ingestDetail(state,record,detail,now);
+    if (record?.admitted && eligible(record,config)) ingestDetail(state,record,detail,now);
   }
   return {admittedIds,changedIds};
 }
 
 function ingestDetail(state,record,detail,now) {
   const messages=structuredClone(detail.messages);
-  const keys=messages.map(messageKey); const previous=record.messageKeys;
+  const keys=messages.map(messageKey); const previous=record.messages?.map(messageKey) || record.messageKeys;
   const fingerprint=hash([keys,detail.candidate || {}]);
   let added=messages;
   if (previous?.length) {
@@ -106,27 +131,37 @@ function ingestDetail(state,record,detail,now) {
     if (!overlap && hash(previous)!==hash(keys)) markHandoff(state,record.id,'message_window_discontinuity',now);
     added=overlap?messages.slice(overlap):[];
   }
-  if (previous && added.some(m=>m.direction==='outgoing' && !record.knownOutboundContents.includes(m.text || m.displayText || '')))
+  if (previous && added.some(m=>m.direction==='outgoing' && !record.knownOutboundContents.includes(m.text || m.displayText || ''))) {
+    record.lastManualReplyAt=timestamp(now);
     markHandoff(state,record.id,'unrecognized_outgoing_message',now);
+    record.handoff.lastRepliedAt=timestamp(now);
+  }
   const changed=fingerprint!==record.fingerprint;
   record.detail=structuredClone(detail); record.messages=messages; record.messageKeys=keys;
   record.fingerprint=fingerprint; record.needsDetail=false;
   record.lastMessage=messages.at(-1) || null;
   record.lastOutgoing=messages.findLast(m=>m.direction==='outgoing') || record.lastOutgoing || null;
   const last=messages.findLast(m=>m.direction==='incoming' || m.direction==='outgoing' || m.direction==='unknown');
+  const lastOutgoingIndex=messages.findLast(m=>m.direction==='outgoing')?.localIndex??-1;
+  const newAttachment=(detail.attachmentRequests||[]).some(r=>r.status==='pending'&&r.messageIndex>lastOutgoingIndex);
+  if(changed&&last?.direction==='incoming')record.lastInboundObservedAt=now;
   if (record.human_handoff || record.status==='stopped') return;
+  if(newAttachment&&fingerprint!==record.processedFingerprint){if(changed){record.pendingAt=now;record.lastInboundObservedAt=now;}record.status='chatting';return;}
+  if(record.pendingAttachmentGuidance&&fingerprint!==record.processedFingerprint){record.pendingAt??=now;record.status='chatting';return;}
   if (last?.direction==='unknown') { markHandoff(state,record.id,'unknown_message_direction',now); return; }
   if (last?.direction==='outgoing' || !last) {
     record.pendingAt=null; record.status='waiting_reply'; return;
   }
-  if (changed && fingerprint!==record.processedFingerprint) {record.pendingAt=now;record.status='chatting';}
+  if (changed && fingerprint!==record.processedFingerprint) {record.pendingAt=now;record.lastInboundObservedAt=now;record.status='chatting';}
   if (fingerprint===record.processedFingerprint) record.pendingAt=null;
 }
 
 export function dueConversations(state,config,now=Date.now()) {
   if (state.controls?.paused || state.controls?.stopRequested || state.runtime?.humanActive) return [];
   return Object.values(state.conversations).filter(r=>r.admitted && eligible(r,config) && !r.human_handoff && r.status!=='stopped'
-    && !r.needsDetail && r.detail && r.pendingAt!==null && r.pendingAt!==undefined && now-r.pendingAt>=Math.max(0,config.debounceMs || 0)
+    && !(r.temporaryHumanPauseUntil>now)
+    && shouldInspectConversation(r,config,now)
+    && !r.needsDetail && r.detail && r.pendingAt!==null && r.pendingAt!==undefined && now-r.pendingAt>=Math.max(config.mode==='automatic'?30000:0,config.debounceMs || 0)
     && r.fingerprint && r.fingerprint!==r.processedFingerprint).sort((a,b)=>a.pendingAt-b.pendingAt);
 }
 

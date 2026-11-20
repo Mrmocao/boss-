@@ -54,9 +54,15 @@ export const pageProbe = `(() => {
       return target.origin === currentUrl.origin && !target.username && !target.password && target.pathname === path;
     } catch { return false; }
   });
+  // BOSS has changed the recruiter navigation label from “牛人管理” to
+  // “推荐牛人”; the latter is currently rendered without a stable href.
+  const hasVisibleLabel = label => Array.from(document.querySelectorAll('a,button,[role="button"],.nav-item'))
+    .some(e => visible(e) && e.innerText.trim() === label);
+  const recruiterPeopleNavigation = hasNav('/web/chat/geek/manage_v2', '牛人管理') || hasVisibleLabel('推荐牛人');
+  const recruiterChatNavigation = hasNav('/web/chat/index', '沟通') || hasNav('/web/chat/index', '消息');
   const recruiterAccountNavigation = !!(visible(profile) && profile.innerText.trim()
-    && hasNav('/web/chat/job/list', '职位管理') && hasNav('/web/chat/geek/manage_v2', '牛人管理')
-    && hasNav('/web/chat/index', '沟通'));
+    && hasNav('/web/chat/job/list', '职位管理') && recruiterPeopleNavigation
+    && recruiterChatNavigation);
   const controls = Array.from(document.querySelectorAll('a,button,[role="button"]')).filter(visible);
   const loginControl = controls.some(e => /^(扫码登录|短信登录|验证码登录|密码登录|登录注册|登录\\/注册)$/.test(e.innerText.trim()));
   const verificationControl = Array.from(document.querySelectorAll('[role="dialog"],.dialog,.modal')).filter(visible)

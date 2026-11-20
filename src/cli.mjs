@@ -20,7 +20,7 @@ const help = {
     collect: '仅公司配置：滚动读取当前筛选的沟通列表并保存本地，不打开会话、不发送消息。',
   },
   notImplemented: ['read_conversation', 'send_message', 'MCP server'],
-  options: { '--profile personal|company|company-2': '选择独立浏览器目录；company-2 是第二个招聘账号；默认 personal。', '--target <id>': 'status / collect 支持。', '--max-steps <1..500>': 'collect 滚动读取次数上限，默认 120。' },
+  options: { '--profile personal|company|company-2|company-3': '选择独立浏览器目录；company-2/company-3 是招聘账号；默认 personal。', '--target <id>': 'status / collect 支持。', '--max-steps <1..500>': 'collect 滚动读取次数上限，默认 120。' },
 };
 
 async function main() {

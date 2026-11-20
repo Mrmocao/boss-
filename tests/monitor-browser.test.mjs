@@ -197,6 +197,14 @@ test('draft present before observer install is sticky handoff without copying dr
   assert.equal(f.run('resume').resumed,true);
 });
 
+test('review-only navigation allows stale interaction markers but never erases them or touches drafts',t=>{
+ t.mock.method(Date,'now',()=>1800000000000);
+ const f=domFixture();f.run();const hook=f.context.window[MONITOR_HOOK_KEY];hook.humanConversationIds=[row.domRowId];hook.lastHumanAt=Date.now()-600001;hook.lastInputAt=hook.lastHumanAt;
+ assert.equal(f.run('review_open').opened,true);assert.deepEqual(Array.from(hook.humanConversationIds),[row.domRowId]);
+ hook.lastHumanAt=Date.now()-599999;assert.equal(f.run('review_open').blocked,'HUMAN_ACTIVE');
+ hook.lastHumanAt=1;hook.lastInputAt=1;f.editor.value='unfinished';assert.equal(f.run('review_open').blocked,'HUMAN_ACTIVE');assert.equal(f.editor.value,'unfinished');
+});
+
 test('page reload with restored draft reestablishes human handoff',() => {
   const f = domFixture(); f.run();
   delete f.context.window[MONITOR_HOOK_KEY];

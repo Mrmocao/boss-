@@ -86,7 +86,7 @@ test('inventory visits registered profiles only and hides foreign pages and quer
     listTargets:async endpoint=>{calls.push(endpoint);return [tab('one'),tab('foreign','https://other.test/secret?token=token'),tab('home','https://www.zhipin.com/?tracking=token')];},
     probeTarget:async()=>observed()};
   const result=await listKnownBossBrowsers({},deps);
-  assert.equal(result.browsers.length,3);assert.deepEqual(calls,[config.endpoint]);
+  assert.equal(result.browsers.length,4);assert.deepEqual(calls,[config.endpoint]);
   assert.equal(result.browsers[2].status,'connected');assert.equal(result.browsers[2].pages.length,2);
   assert.ok(!JSON.stringify(result).includes('token'));assert.ok(!JSON.stringify(result).includes('other.test'));
 });

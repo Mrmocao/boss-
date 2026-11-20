@@ -62,7 +62,7 @@ test('manual input and explicit handoff remain paused across observations and re
   let s=state();seed(s);const observation=snap([row('1')],row('1'),[msg('你好')]);
   observation.activity={humanConversationIds:['1']};ingestSnapshot(s,observation,config,1);
   s=JSON.parse(JSON.stringify(s));observation.activity={};ingestSnapshot(s,observation,config,2);
-  assert.equal(s.conversations['1'].human_handoff,true);assert.equal(dueConversations(s,config,1000).length,0);
+  assert.equal(s.conversations['1'].human_handoff,false);assert.equal(dueConversations(s,config,1000).length,0);
   markHandoff(s,'1','manual',3);markHandoff(s,'1','manual',4);
   assert.equal(s.notifications.filter(n=>n.reason==='manual').length,1);
 });
@@ -109,16 +109,16 @@ test('display-time rollover and old fingerprint format never admit historical ro
   assert.deepEqual(next.admittedIds,['1']);
 });
 
-test('manual selection pauses other conversations for 15 seconds but only its own handoff is sticky',()=>{
+test('manual selection pauses activity for 15 seconds without permanent handoff; typing remains sticky',()=>{
   const s=state();seed(s,'1');seed(s,'2');
   const observation=snap([row('1'),row('2')],row('2'),[msg('来自另一个候选人的消息')]);
   observation.activity={lastHumanAt:1000,manualSelection:true,manualConversationIds:['1']};
   ingestSnapshot(s,observation,config,1001);
-  assert.equal(s.runtime.humanActive,true);assert.equal(s.conversations['1'].human_handoff,true);
+  assert.equal(s.runtime.humanActive,true);assert.equal(s.conversations['1'].human_handoff,false);assert.equal(s.conversations['1'].temporaryHumanPauseUntil,16001);
   assert.deepEqual(dueConversations(s,config,1100),[]);
   ingestSnapshot(s,observation,config,16000);
-  assert.equal(s.runtime.humanActive,false);assert.equal(s.conversations['1'].human_handoff,true);
+  assert.equal(s.runtime.humanActive,false);assert.equal(s.conversations['1'].human_handoff,false);
   assert.deepEqual(dueConversations(s,config,16000).map(r=>r.id),['2']);
   observation.activity.typing=true;ingestSnapshot(s,observation,config,17000);
-  assert.equal(s.runtime.humanActive,true);assert.equal(s.conversations['2'].human_handoff,true);
+  assert.equal(s.runtime.humanActive,true);assert.equal(s.conversations['2'].human_handoff,false);assert.equal(s.conversations['2'].temporaryHumanPauseUntil,32000);
 });

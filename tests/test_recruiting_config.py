@@ -40,6 +40,7 @@ class RecruitingConfigTests(unittest.TestCase):
         return validator.validate_config(self.job_path, self.msg_path)
 
     def ready_fixture(self):
+        self.job["questionnaire"]["delivery"] = "link"
         self.job["job"]["status"] = "approved"
         ex = self.job["execution"]
         ex["mode"] = "automatic"
@@ -54,11 +55,16 @@ class RecruitingConfigTests(unittest.TestCase):
             message["status"] = "approved"
         self.job["open_questions"] = []
 
-    def test_current_draft_is_valid_but_not_ready(self):
+    def test_current_config_is_valid_but_missing_external_readiness(self):
         result = self.validate()
         self.assertTrue(result["structure_valid"], result["errors"])
         self.assertFalse(result["execution_ready"])
-        self.assertTrue(any("当前模式" in x for x in result["execution_blockers"]))
+        self.assertTrue(any("尚未验收" in x for x in result["execution_blockers"]))
+
+    def test_file_delivery_needs_real_capability_but_not_a_download_url(self):
+        result = self.validate()
+        self.assertFalse(any("缺少固定问卷链接" in x for x in result["execution_blockers"]))
+        self.assertTrue(any("assessment_file_delivery" in x for x in result["execution_blockers"]))
 
     def test_complete_fixture_is_ready_without_executing_any_action(self):
         self.ready_fixture()

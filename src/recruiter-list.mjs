@@ -18,6 +18,7 @@ const observe = `(() => {
   if (!account.displayName || !filters.category || !filters.job || !filters.read) return { blocked: 'FILTER_UNVERIFIED' };
   return { account, filters, sourceUrl: new URL(p.url).origin + new URL(p.url).pathname,
     selectedRow: document.querySelector('.geek-item.selected')?.getAttribute('data-id') || null,
+    selectedHeader: document.querySelector('.conversation-main .base-name') ? {name:text('.conversation-main .base-name'),jobTitle:text('.conversation-main .position-name')} : null,
     windowLimitText: text('.conversation-no-data .subtitle'),
     geometry: { top:list.scrollTop, height:list.scrollHeight, client:list.clientHeight },
     footer: text('.load-tips'),
@@ -32,7 +33,13 @@ const observe = `(() => {
 })()`;
 
 export function contextKey(page) {
-  return JSON.stringify({ account:page.account, filters:page.filters, sourceUrl:page.sourceUrl, selectedRow:page.selectedRow });
+  return JSON.stringify({ account:page.account, filters:page.filters, sourceUrl:page.sourceUrl, selectedRow:page.selectedRow,selectedHeader:page.selectedHeader??null });
+}
+export function sameListContext(page,expectedKey){
+  const expected=JSON.parse(expectedKey),current={account:page.account,filters:page.filters,sourceUrl:page.sourceUrl,selectedRow:page.selectedRow,selectedHeader:page.selectedHeader??null};
+  // A selected row can be virtualized out during a read-only scan. The detail header must remain unchanged.
+  if(current.selectedRow===null&&expected.selectedRow&&current.selectedHeader&&JSON.stringify(current.selectedHeader)===JSON.stringify(expected.selectedHeader))current.selectedRow=expected.selectedRow;
+  return JSON.stringify(current)===expectedKey;
 }
 
 export function createListAdapter(session) {
@@ -48,9 +55,9 @@ export function createListAdapter(session) {
       if (!Number.isFinite(top) || top < 0) fail('INVALID_SCROLL', 'Invalid list position.');
       return evaluate(`(() => {
         const p = ${observe}; if(p.blocked) return p;
-        const key = JSON.stringify({account:p.account,filters:p.filters,sourceUrl:p.sourceUrl,selectedRow:p.selectedRow});
-        if(key !== ${JSON.stringify(expected)}) return {blocked:'PAGE_CHANGED'};
-        document.querySelector('.user-list').scrollTop = ${top};
+        if(!(${sameListContext.toString()})(p,${JSON.stringify(expected)})) return {blocked:'PAGE_CHANGED'};
+        const list=document.querySelector('.user-list');list.scrollTop=${top};
+        list.dispatchEvent(new Event('scroll',{bubbles:true}));
         return {scrolled:true};
       })()`);
     },
@@ -59,7 +66,7 @@ export function createListAdapter(session) {
 }
 
 /** Accumulate overlapping virtual-list windows; DOM IDs are only scan-local keys. */
-export async function scanRecruiterList(adapter, { maxSteps = 120, maxRows = 1000 } = {}) {
+export async function scanRecruiterList(adapter, { maxSteps = 120, maxRows = 1000,stopAfterPage } = {}) {
   if (!Number.isSafeInteger(maxSteps) || maxSteps < 1 || maxSteps > 500 || !Number.isSafeInteger(maxRows) || maxRows < 1)
     fail('INVALID_LIMIT', 'Invalid scan limits.');
   const initial = await adapter.read(), expected = contextKey(initial);
@@ -67,7 +74,7 @@ export async function scanRecruiterList(adapter, { maxSteps = 120, maxRows = 100
   let page = initial, stopReason = 'step_limit', stable = 0, previous = '';
   let restored = false;
   const validate = next => {
-    if (next.blocked || contextKey(next) !== expected) fail('PAGE_CHANGED', 'Account, filters or selected conversation changed; discard scan.');
+    if (next.blocked || !sameListContext(next,expected)) fail('PAGE_CHANGED', 'Account, filters or selected conversation changed; discard scan.');
   };
   try {
     if (initial.geometry.top > 0) {
@@ -85,6 +92,7 @@ export async function scanRecruiterList(adapter, { maxSteps = 120, maxRows = 100
         rows.set(row.domRowId, { ...row, sourceIndex: prior?.sourceIndex ?? rows.size + 1 });
       }
       if (stopReason === 'row_limit') break;
+      if(stopAfterPage?.(page)){stopReason='recent_window_end';break;}
       const signature = JSON.stringify([page.geometry, page.footer, page.rows, rows.size]);
       stable = signature === previous ? stable + 1 : 0; previous = signature;
       const atBottom = page.geometry.top + page.geometry.client >= page.geometry.height - 2;
