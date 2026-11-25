@@ -1,6 +1,6 @@
 # 招聘持续服务
 
-更新于 2026-11-10。统一服务运行监听、网页和邮箱轮询，不依赖当前 Codex 对话继续执行。启动后会持续运行；电脑需保持开机，招聘专用 Chrome 保持登录。尚未注册 Windows 开机服务或自动登录。
+更新于 2026-11-25。统一服务运行监听、网页和邮箱轮询，不依赖当前 Codex 对话继续执行。启动后由独立守护进程维持服务，电脑需保持开机，招聘专用 Chrome 保持登录。尚未注册 Windows 开机任务或自动登录。
 
 ## 启动、检查和停止
 
@@ -11,7 +11,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File $runner service:status
 powershell -NoProfile -ExecutionPolicy Bypass -File $runner service:stop
 ```
 
-看板：<http://127.0.0.1:19336/>。服务启动前，旧独立监听和旧看板需停止，不能抢占未知进程。日志在 `.local/service/`，招聘业务状态在 `.local/monitor/company-2/state.json`。服务重启保留回执、S6 次数、人工接管和收件记录。监听异常退出后最多每五分钟重启五次，连续失败显示 attention；不要用重启清除人工接管或未知发送状态。
+看板：<http://127.0.0.1:19336/>。服务启动前，旧独立监听和旧看板需停止，不能抢占未知进程。日志在 `.local/service/`，招聘业务状态在 `.local/monitor/company-2/state.json`。服务重启保留回执、S6 次数、人工接管和收件记录。`service-supervisor.ps1` 每5秒检查服务进程，异常退出后自动重启。网页显示服务、浏览器、招聘沟通页和账号身份的具体故障原因。`service:stop` 会同时停止守护进程，手动停止不会被自动拉起。
+
+浏览器端口失联或 BOSS 页面离开沟通页时，服务每30秒尝试恢复对应专用浏览器。浏览器仍存在时切回 `/web/chat/index`，浏览器已经退出时按账号配置重新启动。账号需要扫码或登录时，工作台会显示“需要重新登录”，不会代替人工输入验证码。
 
 ## 自动处理规则
 

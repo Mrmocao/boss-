@@ -8,12 +8,13 @@ import {MonitorStore} from './monitor-store.mjs';
 import {monitorRoot,monitorRootForProfile,readStatus,queueCommand,readMonitorConfig} from './monitor-daemon.mjs';
 import {startMonitorWeb} from './monitor-web.mjs';
 import {startAutomationApi} from './automation-api.mjs';
-import {listAccounts} from './account-manager.mjs';
+import {listAccounts,recoverAccount} from './account-manager.mjs';
 
 const root=resolve(projectRoot,'.local/service');
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const monitorSelectionPath=resolve(root,'monitor-selection.json');
 const monitorConfigDir=resolve(root,'monitor-configs');
+const supervisorStopPath=resolve(root,'supervisor-stop');
 async function readSelection(defaultProfile){
   try{return JSON.parse(await readFile(monitorSelectionPath,'utf8'));}
   catch(e){if(e.code!=='ENOENT')throw e;return {[defaultProfile]:true};}
@@ -38,13 +39,16 @@ export async function serviceStatus(){
     const s=JSON.parse(await readFile(resolve(root,'state.json'),'utf8'));
     const owner=JSON.parse(await readFile(resolve(root,'daemon.lock/owner.json'),'utf8'));
     let alive=false;try{process.kill(owner.pid,0);alive=owner.pid===s.runtime.pid;}catch{}
-    return {running:alive,...s.runtime,responsive:alive&&Date.now()-Date.parse(s.runtime.heartbeatAt)<20000};
+    let supervisor=null;try{supervisor=JSON.parse((await readFile(resolve(root,'supervisor.json'),'utf8')).replace(/^\uFEFF/,''));}catch{}
+    if(!alive)return {running:false,status:'stopped',lastHeartbeatAt:s.runtime?.heartbeatAt||null,lastKnownStatus:s.runtime?.status||'unknown',supervisor};
+    return {running:true,...s.runtime,responsive:Date.now()-Date.parse(s.runtime.heartbeatAt)<20000,supervisor};
   }catch{return {running:false,status:'stopped'};}
 }
 export async function runService(){
   const store=await new MonitorStore(root).init();
   let stopping=false,web,automationApi,apiStatus='disabled',mail,lastMail=0;
   const monitors=new Map(),lastLaunch=new Map(),stopRequested=new Set();
+  const browserRecovery=new Map();
   const signal=()=>{stopping=true;};process.on('SIGTERM',signal);process.on('SIGINT',signal);
   const launch=(file,args,label)=>{
     const out=openSync(resolve(root,label+'.stdout.log'),'a'),err=openSync(resolve(root,label+'.stderr.log'),'a');
@@ -62,7 +66,7 @@ export async function runService(){
       const currentSelection=await readSelection(config.profile),items=[];
       for(const definition of definitions.values()){
         const status=await readStatus(definition.root);
-        items.push({profile:definition.profile,displayName:definition.displayName,selected:currentSelection[definition.profile]===true,running:status.running,responsive:status.responsive,health:status.runtime?.health||'not_started',lastError:status.runtime?.lastError||null,heartbeatAt:status.runtime?.heartbeatAt||null,root:definition.root});
+        items.push({profile:definition.profile,displayName:definition.displayName,selected:currentSelection[definition.profile]===true,running:status.running,responsive:status.responsive,health:status.runtime?.health||'not_started',lastError:status.runtime?.lastError||null,heartbeatAt:status.runtime?.heartbeatAt||null,recovery:browserRecovery.get(definition.profile)||null,root:definition.root});
       }
       return items;
     };
@@ -86,6 +90,11 @@ export async function runService(){
         const child=monitors.get(definition.profile),live=child&&child.exitCode===null&&!child.signalCode;
         const status=await readStatus(definition.root);
         if(selection[definition.profile]===true){
+          const recoveryDue=Date.now()-(browserRecovery.get(definition.profile)?.attemptedAt||0)>30000;
+          if(recoveryDue&&(!status.running||status.runtime?.health==='disconnected'||status.runtime?.lastError)){
+            const recovery={attemptedAt:Date.now(),state:'recovering',error:null};browserRecovery.set(definition.profile,recovery);
+            try{const account=(await listAccounts({refresh:false})).find(item=>item.profile===definition.profile);if(account){const result=await recoverAccount(account.id);browserRecovery.set(definition.profile,{...recovery,...result,state:'recovery_requested'});}else browserRecovery.set(definition.profile,{...recovery,state:'account_missing',error:'ACCOUNT_NOT_REGISTERED'});}catch(e){browserRecovery.set(definition.profile,{...recovery,state:'recovery_failed',error:e.code||'BROWSER_RECOVERY_FAILED'});}
+          }
           if(!live&&!status.running&&Date.now()-(lastLaunch.get(definition.profile)||0)>5000){
             await writeFile(definition.configPath,JSON.stringify(definition.config,null,2)+'\n','utf8');
             monitors.set(definition.profile,launch(process.execPath,[resolve(projectRoot,'src/monitor-daemon.mjs'),'run','--profile',definition.profile,'--root',definition.root,'--config',definition.configPath],`monitor-${definition.profile}`));
@@ -119,7 +128,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).hr
   try{
     if(command==='run')await runService();
     else if(command==='status')console.log(JSON.stringify(await serviceStatus(),null,2));
-    else if(command==='stop'){const s=await serviceStatus();if(s.running){await mkdir(root,{recursive:true});await writeFile(resolve(root,'stop'),'stop');for(let i=0;i<25&&(await serviceStatus()).running;i++)await delay(1000);}console.log(JSON.stringify(await serviceStatus(),null,2));}
+    else if(command==='stop'){await mkdir(root,{recursive:true});await writeFile(supervisorStopPath,'stop');const s=await serviceStatus();if(s.running){await writeFile(resolve(root,'stop'),'stop');for(let i=0;i<25&&(await serviceStatus()).running;i++)await delay(1000);}console.log(JSON.stringify(await serviceStatus(),null,2));}
     else throw new Error('Unknown service command');
   }catch(e){console.error(JSON.stringify({code:e.code||'SERVICE_FAILED',message:e.code==='MONITOR_ALREADY_RUNNING'?e.message:'服务启动失败，请查看本地日志'}));process.exitCode=1;}
 }

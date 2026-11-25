@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {projectRoot} from './config.mjs';
 import {loadConfig} from './config.mjs';
 import {launchBrowser} from './launcher.mjs';
-import {listTargets,isBossUrl} from './cdp.mjs';
+import {listTargets,isBossUrl,CdpSession} from './cdp.mjs';
 import {probeRecruiterTarget} from './browser-registry.mjs';
 
 export const accountsPath=join(projectRoot,'.local','accounts.json');
@@ -26,3 +26,17 @@ export async function updateAccount(id,input){const doc=await read(),account=doc
 export async function prepareNewAccount(){const doc=await read(),used=new Set(doc.accounts.map(a=>a.port));let port=19340;while(used.has(port)&&port<19500)port++;if(!portOk(port))throw Object.assign(Error('ACCOUNT_PORT_INVALID'),{code:'ACCOUNT_PORT_INVALID'});let index=doc.accounts.length+1,id=`company-${index}`;while(doc.accounts.some(a=>a.id===id)){index++;id=`company-${index}`;}const account={id,label:`新招聘账号 ${index}`,profile:id,port,displayName:null,enabled:true,managed:false,pendingLogin:true};doc.accounts.push(account);await save(doc);try{return {...await launchAccount(id),account:safeAccount(account)};}catch(e){await save({...doc,accounts:doc.accounts.filter(a=>a.id!==id)});throw e;}}
 export async function launchAccount(id){const doc=await read(),account=doc.accounts.find(a=>a.id===id);if(!account)throw Object.assign(Error('ACCOUNT_NOT_FOUND'),{code:'ACCOUNT_NOT_FOUND'});const config=configFor(account);const launched=await launchBrowser(config);await save({...doc,accounts:doc.accounts.map(a=>a.id===id?{...a,status:'login_required',lastCheckedAt:new Date().toISOString()}:a)});return {account:safeAccount(account),...launched};}
 export async function refreshAndSaveAccount(id){const doc=await read(),account=doc.accounts.find(a=>a.id===id);if(!account)throw Object.assign(Error('ACCOUNT_NOT_FOUND'),{code:'ACCOUNT_NOT_FOUND'});const result=await refreshAccount(account),next={...account,...result};await save({...doc,accounts:doc.accounts.map(a=>a.id===id?next:a)});return safeAccount(next);}
+export async function recoverAccount(id){
+ const doc=await read(),account=doc.accounts.find(a=>a.id===id);if(!account)throw Object.assign(Error('ACCOUNT_NOT_FOUND'),{code:'ACCOUNT_NOT_FOUND'});
+ const config=configFor(account);let targets;
+ try{targets=await listTargets(config.endpoint);}catch{return launchAccount(id);}
+ const pages=targets.filter(target=>target.type==='page'&&isBossUrl(target.url));
+ const target=pages.find(page=>new URL(page.url).pathname==='/web/chat/index')||pages[0];
+ if(!target)return launchAccount(id);
+ if(new URL(target.url).pathname!=='/web/chat/index'){
+  const session=new CdpSession(target.webSocketDebuggerUrl,{endpoint:config.endpoint});
+  try{await session.connect();await session.send('Page.navigate',{url:'https://www.zhipin.com/web/chat/index'});}finally{session.close();}
+  return {state:'BROWSER_PAGE_RECOVERED',endpoint:config.endpoint,targetId:target.id};
+ }
+ return {state:'BROWSER_ALREADY_OPEN',endpoint:config.endpoint,targetId:target.id};
+}
