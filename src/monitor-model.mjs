@@ -39,7 +39,7 @@ export function getModelSettings(config = {}, env = process.env) {
   return settings;
 }
 
-function cleanText(value, limit = 6000) {
+export function cleanText(value, limit = 6000) {
   return String(value ?? '').slice(0, limit)
     .replace(/(?:年龄\s*[:：]?\s*)?\b\d{1,3}\s*岁/g, '[年龄已省略]')
     .replace(/(?:性别\s*[:：]\s*)(?:男|女|其他)/g, '[性别已省略]')
@@ -83,7 +83,7 @@ function validateResult(value, context) {
     missingFields: [...new Set(value.missingFields)], evidence: value.evidence.map(({field, value, quote, source}) => ({field, value, quote, source})), interest: value.interest, testConsent: value.testConsent, draftOnly: true};
 }
 
-async function readLimited(response, limit) {
+export async function readLimited(response, limit) {
   if (!response.body?.getReader) throw error('MODEL_RESPONSE_INVALID', '模型响应不可读取。');
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

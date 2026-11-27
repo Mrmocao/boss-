@@ -1,6 +1,9 @@
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
-import {resolve} from 'node:path';
+import {dirname,resolve} from 'node:path';
+import {listPortfolioCases,updatePortfolioCase} from './portfolio-cases.mjs';
+import {analyzePortfolio} from './portfolio-workflow.mjs';
+import {applySkillConfig} from './skill-config.mjs';
 import {pathToFileURL} from 'node:url';
 import {randomBytes} from 'node:crypto';
 import {monitorRoot,readStatus,queueCommand} from './monitor-daemon.mjs';
@@ -40,6 +43,8 @@ export function buildDashboardPayload(state,status){
 }
 export const dashboardHtml=await readFile(new URL('./web/dashboard.html',import.meta.url),'utf8');
 const javascript=await readFile(new URL('./web/dashboard.js',import.meta.url),'utf8');
+const portfolioHtml=await readFile(new URL('./web/portfolio.html',import.meta.url),'utf8');
+const portfolioScript=await readFile(new URL('./web/portfolio.js',import.meta.url),'utf8');
 export async function startMonitorWeb({port=19336,root=monitorRoot,monitorRoots={},monitorControl,settingsPath,jobProfilesFile=jobProfilesPath,verifyDownload}={}){
   const token=randomBytes(24).toString('hex');
   const server=createServer(async(req,res)=>{
@@ -51,6 +56,33 @@ export async function startMonitorWeb({port=19336,root=monitorRoot,monitorRoots=
     try {
       if(req.method==='GET'&&req.url==='/'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});res.end(dashboardHtml.replace('__CSRF_TOKEN__',token));return;}
       if(req.method==='GET'&&req.url==='/dashboard.js'){res.writeHead(200,{'Content-Type':'text/javascript; charset=utf-8'});res.end(javascript);return;}
+      const requestUrl=new URL(req.url,origin);
+      if(req.method==='GET'&&requestUrl.pathname==='/portfolio'){
+        res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});res.end(portfolioHtml.replace('__CSRF_TOKEN__',token));return;
+      }
+      if(req.method==='GET'&&req.url==='/portfolio.js'){
+        res.writeHead(200,{'Content-Type':'text/javascript; charset=utf-8'});res.end(portfolioScript);return;
+      }
+      const portfolioRoute=/^\/api\/portfolio\/([a-z0-9-]{1,64})$/.exec(req.url);
+      if(portfolioRoute&&['GET','POST'].includes(req.method)){
+        if(req.headers['x-csrf-token']!==token)return json(403,{error:'INVALID_REQUEST_ORIGIN'});
+        const job=(await readJobProfiles(jobProfilesFile)).jobs.find(j=>j.id===portfolioRoute[1]&&j.status==='manual_portfolio');
+        if(!job)return json(404,{error:'PORTFOLIO_JOB_REQUIRED'});
+        const casesRoot=resolve(dirname(jobProfilesFile),'portfolio-cases');
+        if(req.method==='GET')return json(200,{job:job.name,cases:await listPortfolioCases(casesRoot,job.id)});
+        if(req.headers.origin!==origin||!req.headers['content-type']?.startsWith('application/json'))return json(403,{error:'INVALID_REQUEST_ORIGIN'});
+        const chunks=[];let size=0;
+        for await(const chunk of req){size+=chunk.length;if(size>100000)return json(413,{error:'REQUEST_TOO_LARGE'});chunks.push(chunk);}
+        try{
+          const input=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+          const analyze=async(job,sources)=>{
+            const file=settingsPath||await resolveSkillConfig();
+            const config=await applySkillConfig({model:{configFile:file}},dirname(file));
+            return analyzePortfolio(config,job,sources);
+          };
+          return json(200,{record:await updatePortfolioCase(casesRoot,job,input,analyze)});
+        }catch(e){return json(e.code==='PORTFOLIO_STATE_CHANGED'?409:400,{error:e.code||'PORTFOLIO_REQUEST_FAILED'});}
+      }
       if(req.method==='GET'&&req.url==='/health')return json(200,{ok:true,app:'boss-recruiting-service',version:2});
       if(req.method==='GET'&&req.url==='/api/monitor-status'&&monitorControl)return json(200,{monitors:await monitorControl.status()});
       const monitorRoute=/^\/api\/monitors\/([a-z0-9][a-z0-9-]{1,48})$/.exec(req.url||'');

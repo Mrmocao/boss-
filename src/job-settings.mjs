@@ -1,3 +1,4 @@
+import {portfolioTemplates} from './portfolio-workflow.mjs';
 import {mkdir,readFile,writeFile,unlink} from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
 import {dirname,resolve} from 'node:path';
@@ -16,13 +17,15 @@ async function initialJobs(){
   const monitor=JSON.parse(await readFile(resolve(projectRoot,'config/monitor.json'),'utf8'));
   const rules=policy.rules.screening.rules;
   const major=rules.find(r=>r.id==='H2');
-  return monitor.acceptedTitles.map((name,i)=>({
+  const automatic=monitor.acceptedTitles.map((name,i)=>({
     id:'job-'+(i+1),name,acceptedTitles:[name],
     education:rules.find(r=>r.id==='H1').accepted_levels,senior:true,
     majors:Object.values(major.whitelist).flat(),excluded:major.explicit_excluded_categories,
     intent:'游戏策划',requirements:'',prompt:'',url:'',
     onPass:'questionnaire',onMissing:'clarify',onFail:'reject'
   }));
+  const art=JSON.parse(await readFile(new URL('../config/concept-art-intern.json',import.meta.url),'utf8'));
+  return [...automatic,art];
 }
 
 export async function readJobProfiles(path=jobProfilesPath){
@@ -45,10 +48,20 @@ function list(value,max){
   return [...new Set(value.map(item=>field(item,100,true)))];
 }
 function clean(job,existing){
-  if(job?.status==='manual_draft'||existing?.status==='manual_draft'){
+  if(job?.status==='manual_portfolio'||existing?.status==='manual_portfolio'||job?.status==='manual_draft'||existing?.status==='manual_draft'){
     const id=field(job.id,64,true);
     if(!/^[a-z0-9-]+$/.test(id)||job.acceptedTitles?.length)fail('INVALID_JOB_PROFILE');
-    return {id,name:field(job.name,80,true),status:'manual_draft',acceptedTitles:[],
+    const status=job.status==='manual_portfolio'||existing?.status==='manual_portfolio'?'manual_portfolio':'manual_draft';
+    const rules={};
+    if(status==='manual_portfolio'){
+      portfolioTemplates(field(job.prompt,6000,true));
+      rules.education=list(job.education,30);
+      rules.majors=list(job.majors,300);
+      rules.blockedGrades=list(job.blockedGrades,50);
+      rules.cohort=field(job.cohort,4,true);
+      if(!/^\d{4}$/.test(rules.cohort)||!rules.education.length||!rules.majors.length)fail('INVALID_JOB_PROFILE');
+    }
+    return {id,name:field(job.name,80,true),status,...rules,acceptedTitles:[],
       requirements:field(job.requirements,6000,true),prompt:field(job.prompt,6000,true)};
   }
   if(!job)fail('INVALID_JOB_PROFILE');

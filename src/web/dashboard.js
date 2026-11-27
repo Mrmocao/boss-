@@ -74,26 +74,35 @@ $('reload-settings').onclick=()=>{if(!dirty||confirm('重新读取将放弃当�
 $('save-settings').onclick=async()=>{const button=$('save-settings');if(!settingsRevision)return;button.disabled=true;$('save-result').textContent='正在验证下载并保存…';try{const r=await fetch('/api/settings',{method:'POST',headers:{Origin:location.origin,'Content-Type':'application/json','X-CSRF-Token':token},body:JSON.stringify({url:$('assessment-url').value,revision:settingsRevision})});const s=await r.json();if(!r.ok)throw Error(errors[s.error]||s.error);applySettings(s);savedRevision=s.revision;$('save-result').textContent='保存成功，已验证 Excel 下载。';await refresh();}catch(e){$('save-result').textContent=e.message;}finally{button.disabled=false;}};
 const saveWorkflow=async()=>{const button=$('save-workflow');if(!workflowRevision)return;button.disabled=true;$('workflow-result').textContent='保存中…';try{const r=await fetch('/api/workflow',{method:'POST',headers:{Origin:location.origin,'Content-Type':'application/json','X-CSRF-Token':token},body:JSON.stringify({revision:workflowRevision,prompt:$('workflow-prompt').value,requirements:$('workflow-requirements').value,stageNotes:globalStageNotes})});const s=await r.json();if(!r.ok)throw Error(errors[s.error]||s.error);workflowRevision=s.revision;$('workflow-status').textContent='已保存并热加载';$('workflow-result').textContent='流程配置已生效。';}catch(e){$('workflow-result').textContent='保存失败：'+e.message;}finally{button.disabled=false;}};
 $('save-workflow').onclick=saveWorkflow;$('reload-workflow').onclick=loadWorkflow;
-let jobDirty=false,jobBusy=false;
+let jobDirty=false,jobBusy=false,editingJobStatus;
 const jobFormFields={name:'name',acceptedTitles:'titles',education:'education',majors:'major',excluded:'excluded',intent:'intent',requirements:'requirements',prompt:'prompt',url:'url',onPass:'pass',onMissing:'missing',onFail:'fail'};
 const jobLists=new Set(['acceptedTitles','education','majors','excluded']);
 const discardJob=()=>!jobDirty||confirm('放弃当前岗位未保存的修改？');
 function jobBusyState(busy){
   jobBusy=busy;
-  for(const id of ['job-fields','job-select','save-job','add-job'])$(id).disabled=busy||!jobsRevision;
+  for(const id of ['job-fields','job-select','save-job','add-job','add-portfolio'])$(id).disabled=busy||!jobsRevision;
   $('reload-jobs').disabled=busy;
 }
 function editJob(job){
   selectedJobId=job.id;
-  const manual=job.status==='manual_draft';
-  $('job-draft-status').hidden=!manual;
+  editingJobStatus=job.status;
+  const portfolio=job.status==='manual_portfolio';
+  const manual=portfolio||job.status==='manual_draft';
+  $('portfolio-rules').hidden=!portfolio;
+  $('portfolio-entry').hidden=!portfolio||!jobs.some(item=>item.id===job.id);
+  $('portfolio-link').href='/portfolio?job='+encodeURIComponent(job.id);
+  $('pf-cohort').value=job.cohort||'';
+  $('pf-education').value=(job.education||[]).join('、');
+  $('pf-grades').value=(job.blockedGrades||[]).join('、');
+  $('pf-majors').value=(job.majors||[]).join('\n');
+  $('job-draft-status').hidden=job.status!=='manual_draft';
   $('job-binding').hidden=manual;
   $('job-automatic-rules').hidden=manual;
   $('job-education').required=!manual;
   $('job-form').classList.toggle('manual-draft',manual);
   $('job-rules-label').textContent=manual?'岗位要求与判定规则':'资料核验补充要求';
   $('job-prompt-label').textContent=manual?'人工流程与话术':'AI 提示词补充';
-  const opts=jobs.map(item=>new Option(item.name+(item.status==='manual_draft'?'（草案）':''),item.id));
+  const opts=jobs.map(item=>new Option(item.name+(item.status==='manual_draft'?'（草案）':item.status==='manual_portfolio'?'（无问卷）':''),item.id));
   if(!jobs.some(item=>item.id===job.id))opts.push(new Option('新增岗位',job.id));
   $('job-select').replaceChildren(...opts);
   $('job-select').value=job.id;
@@ -106,7 +115,13 @@ function editJob(job){
   $('job-result').textContent='';
 }
 function readJobForm(){
-  if(jobs.find(item=>item.id===selectedJobId)?.status==='manual_draft'){
+  if(editingJobStatus==='manual_portfolio'){
+    const parts=id=>$(id).value.split(/[、,，\n]/).map(v=>v.trim()).filter(Boolean);
+    return {id:selectedJobId,status:editingJobStatus,acceptedTitles:[],name:$('job-name').value.trim(),
+      requirements:$('job-requirements').value,prompt:$('job-prompt').value,cohort:$('pf-cohort').value,
+      education:parts('pf-education'),majors:parts('pf-majors'),blockedGrades:parts('pf-grades')};
+  }
+  if(editingJobStatus==='manual_draft'){
     return {id:selectedJobId,name:$('job-name').value.trim(),status:'manual_draft',acceptedTitles:[],
       requirements:$('job-requirements').value,prompt:$('job-prompt').value};
   }
@@ -140,6 +155,13 @@ $('add-job').onclick=()=>{
   editJob({id:crypto.randomUUID(),name:'',acceptedTitles:[],education:['本科','硕士','博士'],senior:true,majors:[],excluded:[],intent:'',url:'',requirements:'',prompt:'',onPass:'human',onMissing:'clarify',onFail:'human'});
   $('job-name').focus();
 };
+$('add-portfolio').onclick=()=>{
+  if(!discardJob())return;
+  editJob({id:crypto.randomUUID(),status:'manual_portfolio',acceptedTitles:[],education:['大专','本科','硕士','博士'],
+    requirements:'',prompt:'S2 通过与邮箱投递\n\nS3 学历婉拒\n\nS4 专业婉拒\n\nS5 资料补问\n\nS6 拒收聊天附件与邮箱引导\n'});
+  $('job-result').textContent='请在 S2 至 S6 各标题的下一行填写对外话术，并在投递引导中写明邮箱。';
+  $('job-name').focus();
+};
 $('job-form').oninput=()=>{jobDirty=true;$('job-result').textContent='有未保存的修改';};
 $('job-form').onsubmit=async(event)=>{
   event.preventDefault();
@@ -153,7 +175,7 @@ $('job-form').onsubmit=async(event)=>{
     if(!response.ok)throw Error(errors[view.error]||view.error);
     jobs=view.jobs;jobsRevision=view.revision;
     editJob(jobs.find(item=>item.id===job.id));
-    $('job-result').textContent=job.status==='manual_draft'?'岗位草案已保存。':'已保存。运行中的账号将在下一轮监控时读取。';
+    $('job-result').textContent=job.status==='manual_draft'?'岗位草案已保存。':job.status==='manual_portfolio'?'已保存，可打开候选人工作台。':'已保存。运行中的账号将在下一轮监控时读取。';
   }catch(e){$('job-result').textContent='保存失败：'+e.message;}
   finally{jobBusyState(false);}
 };
