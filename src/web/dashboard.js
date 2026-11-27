@@ -207,6 +207,8 @@ function editJob(job){
   $('pf-majors').value=(job.majors||[]).join('\n');
   $('job-draft-status').hidden=job.status!=='manual_draft';
   $('portfolio-mode').hidden=!portfolio;
+  $('portfolio-unread').hidden=!portfolio||job.delivery!=='automatic';
+  $('pf-unread').checked=job.includeRecentUnread===true;
   $('pf-delivery').value=job.delivery||'manual';
   $('job-binding').hidden=manual&&job.delivery!=='automatic';
   $('job-automatic-rules').hidden=manual||dynamic;
@@ -231,7 +233,7 @@ function editJob(job){
   jobDirty=false;
   $('job-result').textContent='';
 }
-$('pf-delivery').onchange=()=>{$('job-binding').hidden=$('pf-delivery').value!=='automatic';};
+$('pf-delivery').onchange=()=>{$('portfolio-unread').hidden=$('job-binding').hidden=$('pf-delivery').value!=='automatic';};
 function readJobForm(){
   if(editingJobStatus==='dynamic'){
     const name=$('job-name').value.trim();
@@ -243,7 +245,7 @@ function readJobForm(){
     const parts=id=>$(id).value.split(/[、,，\n]/).map(v=>v.trim()).filter(Boolean);
     const delivery=$('pf-delivery').value;
     const titles=parts('job-titles');
-    return {id:selectedJobId,status:editingJobStatus,delivery,acceptedTitles:delivery==='automatic'?(titles.length?titles:[$('job-name').value.trim()]):[],name:$('job-name').value.trim(),
+    return {id:selectedJobId,status:editingJobStatus,delivery,includeRecentUnread:$('pf-unread').checked,acceptedTitles:delivery==='automatic'?(titles.length?titles:[$('job-name').value.trim()]):[],name:$('job-name').value.trim(),
       requirements:$('job-requirements').value,prompt:$('job-prompt').value,cohort:$('pf-cohort').value,
       education:parts('pf-education'),majors:parts('pf-majors'),blockedGrades:parts('pf-grades')};
   }

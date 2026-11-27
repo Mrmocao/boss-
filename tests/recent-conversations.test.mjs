@@ -29,3 +29,14 @@ test('atomic state replacement retries transient Windows sharing violations, nev
  let attempts=0;await renameWithRetry('from','to',{renameFn:async()=>{if(++attempts<3)throw Object.assign(Error(),{code:'EPERM'});},delay:async()=>{}});assert.equal(attempts,3);
  await assert.rejects(renameWithRetry('a','b',{renameFn:async()=>{throw Object.assign(Error(),{code:'ENOSPC'});},delay:async()=>{}}),{code:'ENOSPC'});
 });
+
+test('portfolio can pick up confirmed recent baseline unread only for its bound job',()=>{
+ const s={conversations:{},runtime:{},controls:{},events:[],notifications:[]};
+ const settings={...config,acceptedTitles:['原画','策划'],jobProfiles:{jobs:[{acceptedTitles:['原画'],delivery:'automatic',includeRecentUnread:true}]}};
+ const rows=[['原画','15:00',1],['原画','昨天',1],['原画','15:00',0],['策划','15:00',1]].map(([jobTitle,displayTime,unreadCount],i)=>({domRowId:String(i),name:'测试',jobTitle,displayTime,unreadCount}));
+ const snapshot={account:{displayName:'招聘员'},rows};
+ ingestSnapshot(s,snapshot,{...settings,jobProfiles:{jobs:[]}},now);
+ assert.equal(s.conversations['0'].admitted,false);
+ ingestSnapshot(s,snapshot,settings,now);
+ assert.deepEqual(Object.values(s.conversations).map(c=>c.admitted),[true,false,false,false]);
+});

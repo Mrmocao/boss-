@@ -58,6 +58,7 @@ function clean(job,existing){
     const acceptedTitles=automatic?list(job.acceptedTitles,50):[];
     if(automatic&&!acceptedTitles.length)fail('INVALID_JOB_EDUCATION_OR_TITLE');
     const rules=automatic?{delivery:'automatic'}:{};
+    if(automatic&&job.includeRecentUnread===true)rules.includeRecentUnread=true;
     if(status==='manual_portfolio'){
       if(!automatic){
         const titles=existing?.acceptedTitles?.length?existing.acceptedTitles:existing?.savedTitles;

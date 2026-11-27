@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import {isRecentRow,shouldInspectConversation} from './recent-conversations.mjs';
+import {activityWindow,isRecentRow,shouldInspectConversation} from './recent-conversations.mjs';
 
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fail = (code, message) => { throw Object.assign(new Error(message), {code}); };
@@ -67,6 +67,9 @@ export function ingestSnapshot(state,snapshot,config,now=Date.now()) {
   const baseline=!state.runtime.listBaselineEstablished;
   const max=Math.min(config.mode==='automatic'?1000:3,Math.max(0,Number.isInteger(config.maxConversations)?config.maxConversations:3));
   let admitted=Object.values(state.conversations).filter(r=>r.admitted!==false).length;
+  const unreadTitles=new Set((config.jobProfiles?.jobs||[])
+    .filter(job=>job.delivery==='automatic'&&job.includeRecentUnread===true)
+    .flatMap(job=>job.acceptedTitles));
   const admittedIds=[],changedIds=[];
   for (const row of snapshot.rows) {
     if(state.archivedConversations?.[row.domRowId])continue;
@@ -80,7 +83,12 @@ export function ingestSnapshot(state,snapshot,config,now=Date.now()) {
     const newEvent=!baseline && (!existing || changed || unreadIncreased);
     if(existing&&(changed||unreadIncreased))record.lastLiveChangeAt=now;
     const recent=isRecentRow(row,config,now,record);
-    if (recent&&(newEvent || (config.mode==='automatic' && config.processExistingUnread && Number(row.unreadCount)>0)) && !record.admitted && eligible(record,config) && admitted<max) {
+    let includeUnread=false;
+    if(!record.admitted&&config.mode==='automatic'&&Number(row.unreadCount)>0){
+      const window=activityWindow(row.displayTime,now);
+      includeUnread=config.processExistingUnread || (unreadTitles.has(row.jobTitle)&&window&&window.start>=now-86400000&&window.start<=now);
+    }
+    if (recent&&(newEvent||includeUnread) && !record.admitted && eligible(record,config) && admitted<max) {
       record.admitted=true; admitted++; admittedIds.push(record.id);
       record.admittedAt=timestamp(now);
       record.needsDetail=true;record.pendingAt=now;

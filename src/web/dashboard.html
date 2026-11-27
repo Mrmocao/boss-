@@ -26,6 +26,7 @@ main{width:100%;max-width:1540px;margin:0 auto;padding:24px 28px 16px}header{dis
         <div><label for="job-name">岗位名称</label><input id="job-name" required maxlength="80" placeholder="例如 角色原画师"></div>
         <div id="job-draft-status" hidden><label>执行状态</label><span>草案 · 人工处理</span></div>
         <div id="portfolio-mode" hidden><label for="pf-delivery">发送方式</label><select id="pf-delivery"><option value="manual">人工发送</option><option value="automatic">BOSS 自动发送</option></select></div>
+        <div id="portfolio-unread" hidden><label class="check-line"><input id="pf-unread" type="checkbox"> 处理最近 24 小时内已有的未读来信</label></div>
         <div id="portfolio-entry" hidden><label>作品投递 · 人工跟进</label><a id="portfolio-link">打开候选人工作台</a></div>
         <div id="job-binding"><label for="job-titles">匹配的 BOSS 职位名称</label><input id="job-titles" placeholder="默认使用岗位名称，多个名称用顿号隔开"></div>
       </div>
