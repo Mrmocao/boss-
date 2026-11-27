@@ -1,3 +1,4 @@
+import { planDynamic } from './dynamic-flow.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolve } from 'node:path';
@@ -106,6 +107,7 @@ export function planWorkflow(c,a,policy,config,intents={}) {
   if(/(?:是|是不是|是否).{0,8}(?:AI|人工智能|机器人|自动回复)|真人吗/i.test(batch))
     return send('IDENTITY','我是协助招聘同事处理沟通的自动化助手，具体招聘安排会由招聘同事确认。',wf.stage);
   if(['rejected_screening','declined_test','do_not_contact','awaiting_review'].includes(wf.stage))return handoff('终态收到新消息');
+  if(policy.job?.status==='dynamic' && (c.pendingAttachmentGuidance || c.detail?.attachmentRequests?.some(r=>r.status==='pending')))return handoff('动态岗位收到附件请求，请人工核实投递渠道');
   if(c.pendingAttachmentGuidance)return send('S7',text('S7',{EMAIL:policy.rules.questionnaire.collection_email}),c.pendingAttachmentGuidance.nextStage);
   if((c.detail?.attachmentRequests||[]).some(r=>r.status==='pending'))return {type:'reject_attachment',messageId:'S7',text:text('S7',{EMAIL:policy.rules.questionnaire.collection_email}),nextStage:wf.stage};
   if(wf.stage==='waiting_email'||wf.stage==='submission_incomplete')return {type:'wait',reason:'等待邮箱中的真实附件回执'};
@@ -115,6 +117,7 @@ export function planWorkflow(c,a,policy,config,intents={}) {
     if(!s1)return handoff('缺少 S1 发送回执');
     const s1Index=(c.messages||[]).findLastIndex(m=>m.direction==='outgoing'&&m.text===s1.text);
     if(s1Index<0)return handoff('当前消息窗口缺少 S1，不能核实问卷同意语境');
+    if(!a.consent)return handoff('问卷意愿需要重新核实');
     if(a.consent.value==='no')return send('DECLINE_TEST',text('DECLINE_TEST'),'declined_test');
     if(a.consent.value!=='yes')return handoff('问卷意愿不明确');
     const fileDelivery=config.assessment?.delivery!=='link';
@@ -126,6 +129,7 @@ export function planWorkflow(c,a,policy,config,intents={}) {
     if(fileDelivery)return {type:'send_file',messageId:'S3',delivery:'file',filePath:config.assessment.filePath,text:text('S3_FILE',{EMAIL:policy.rules.questionnaire.collection_email})+subjectNote,nextStage:'waiting_email',receiptToken:token,emailSubjectFormat};
     return {...send('S3',text('S3',{TEST_LINK:questionnaireUrl(config),EMAIL:policy.rules.questionnaire.collection_email})+subjectNote,'waiting_email'),receiptToken:token,emailSubjectFormat};
   }
+  if(policy.job?.status==='dynamic')return planDynamic(c,a,policy.job,text('S1'));
   const result=screenCandidate(a,policy);
   if(result.outcome==='pass'&&policy.job?.onPass==='human')return handoff('岗位要求初筛通过后交人工跟进');
   if(result.outcome==='missing'&&policy.job?.onMissing==='human')return handoff('岗位要求资料缺失时人工核实');
@@ -156,6 +160,12 @@ export function recordPlan(state,cid,fingerprint,plan,analysis) {
 export function confirmWorkflowSend(state,cid,plan,intentId) {
   const c=state.conversations[cid];c.workflow??={stage:'screening'};
   c.workflow.stage=plan.nextStage;c.workflow.lastIntentId=intentId;
+  if(plan.flowRule){
+    const {jobId,id}=plan.flowRule;
+    const prior=c.workflow.flowProgress;
+    const delivered=prior?.jobId===jobId?prior.delivered:[];
+    c.workflow.flowProgress={jobId,delivered:[...new Set([...delivered,id])]};
+  }
   if(plan.receiptToken)c.workflow.receiptToken=plan.receiptToken;
   if(plan.emailSubjectFormat)c.workflow.emailSubjectFormat=plan.emailSubjectFormat;
   if(plan.messageId==='S3')delete c.pendingAssessment;

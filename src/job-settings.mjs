@@ -1,3 +1,4 @@
+import {cleanFlow} from './dynamic-flow.mjs';
 import {portfolioTemplates} from './portfolio-workflow.mjs';
 import {mkdir,readFile,writeFile,unlink} from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
@@ -65,6 +66,12 @@ function clean(job,existing){
       requirements:field(job.requirements,6000,true),prompt:field(job.prompt,6000,true)};
   }
   if(!job)fail('INVALID_JOB_PROFILE');
+  if(job.status==='dynamic'||existing?.status==='dynamic'){
+    const id=field(job.id,64,true),acceptedTitles=list(job.acceptedTitles,50);
+    if(!/^[a-z0-9-]+$/.test(id)||!acceptedTitles.length||job.status!=='dynamic')fail('INVALID_JOB_PROFILE');
+    return {id,status:'dynamic',name:field(job.name,80,true),acceptedTitles,flow:cleanFlow(job.flow),
+      requirements:field(job.requirements,6000),url:field(job.url||'',6000)};
+  }
   const id=field(job.id,64,true);
   if(!/^[a-z0-9-]+$/.test(id)||typeof job.senior!=='boolean')fail('INVALID_JOB_PROFILE');
   const acceptedTitles=list(job.acceptedTitles,50),education=list(job.education,levels.length);

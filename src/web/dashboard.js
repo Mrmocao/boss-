@@ -80,14 +80,124 @@ const jobLists=new Set(['acceptedTitles','education','majors','excluded']);
 const discardJob=()=>!jobDirty||confirm('放弃当前岗位未保存的修改？');
 function jobBusyState(busy){
   jobBusy=busy;
-  for(const id of ['job-fields','job-select','save-job','add-job','add-portfolio'])$(id).disabled=busy||!jobsRevision;
+  for(const id of ['job-fields','job-select','save-job','add-job','add-portfolio','add-flow'])$(id).disabled=busy||!jobsRevision;
   $('reload-jobs').disabled=busy;
 }
+let flowRules=[];
+const flowLabels={reply:'发送指定话术',questionnaire:'询问问卷意愿',handoff:'转人工',wait:'等待来信'};
+function flowFeedback(message){
+  $('flow-feedback').textContent=message;
+  $('flow-feedback').hidden=!message;
+}
+function flowChanged(){
+  jobDirty=true;
+  $('job-result').textContent='动态岗位有未保存的修改';
+}
+function renderFlowRules(){
+  const box=$('flow-rows');
+  box.replaceChildren();
+  flowRules.forEach((rule,index)=>{
+    const section=text('section','','job-section'), fields=text('div','','job-grid');
+    const toolbar=text('div','','job-toolbar');
+    toolbar.append(text('strong','规则 '+(index+1)));
+    const addButton=(name,disabled,handler)=>{
+      const button=text('button',name,'small');
+      button.type='button';button.disabled=disabled;
+      button.onclick=()=>{handler();flowChanged();renderFlowRules();};
+      toolbar.append(button);
+    };
+    addButton('上移',index===0||rule.after===flowRules[index-1]?.id,()=>{
+      [flowRules[index-1],flowRules[index]]=[rule,flowRules[index-1]];
+    });
+    addButton('下移',index===flowRules.length-1||flowRules[index+1]?.after===rule.id,()=>{
+      [flowRules[index+1],flowRules[index]]=[rule,flowRules[index+1]];
+    });
+    addButton('移除',flowRules.some(r=>r.after===rule.id),()=>flowRules.splice(index,1));
+    const addField=(caption,control)=>{
+      const label=document.createElement('label');
+      label.append(caption,control);fields.append(label);
+    };
+    const condition=document.createElement('textarea');
+    condition.required=true;condition.maxLength=600;condition.value=rule.condition;
+    condition.placeholder='例如：候选人明确表示有角色设计作品，且愿意投递作品集';
+    condition.oninput=()=>{rule.condition=condition.value;};
+    addField('触发条件',condition);
+    const after=document.createElement('select');
+    after.add(new Option('无前置步骤',''));
+    flowRules.slice(0,index).forEach((r,i)=>{if(r.action==='reply')after.add(new Option('规则 '+(i+1)+' 的话术已送达',r.id));});
+    after.value=rule.after;after.onchange=()=>{rule.after=after.value;renderFlowRules();};
+    addField('前置条件',after);
+    const action=document.createElement('select');
+    Object.entries(flowLabels).forEach(([id,label])=>action.add(new Option(label,id)));
+    action.value=rule.action;
+    action.onchange=()=>{
+      if(flowRules.some(r=>r.after===rule.id)&&action.value!=='reply'){
+        action.value=rule.action;flowFeedback('请先修改依赖这条话术的前置条件。');return;
+      }
+      rule.action=action.value;renderFlowRules();
+    };
+    addField('命中后执行',action);
+    if(rule.action==='reply'){
+      const message=document.createElement('textarea');
+      message.required=true;message.maxLength=1500;message.value=rule.text;
+      message.oninput=()=>{rule.text=message.value;};
+      addField('对外话术',message);
+    }
+    section.append(toolbar,fields);box.append(section);
+  });
+}
+$('add-flow').onclick=()=>{
+  if(!discardJob())return;
+  editJob({id:crypto.randomUUID(),name:'',acceptedTitles:[],status:'dynamic',requirements:'',flow:{rules:[],fallback:'handoff'}});
+  $('job-name').focus();
+};
+$('flow-add').onclick=()=>{
+  if(flowRules.length>=20)return flowFeedback('每个岗位最多配置 20 条规则。');
+  flowRules.push({id:crypto.randomUUID(),condition:'',action:'handoff',text:'',after:''});
+  flowChanged();renderFlowRules();
+};
+async function flowRequest(kind){
+  if(jobBusy)return;
+  if(kind==='draft'&&flowRules.length&&!confirm('用模型生成的草稿替换当前表单中的规则？'))return;
+  const job=readJobForm();
+  if(kind==='draft'&&!job.requirements.trim())return flowFeedback('请先填写岗位要求与流程文档。');
+  if(kind==='preview'&&!$('flow-sample').value.trim())return flowFeedback('请先填写示例来信。');
+  jobBusyState(true);flowFeedback('模型处理中…');
+  try{
+    const response=await fetch('/api/flow/'+kind,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':token},
+      body:JSON.stringify({...job,sample:$('flow-sample').value})});
+    const data=await response.json();
+    if(!response.ok)throw Error(({INVALID_FLOW_RULE:'请检查触发条件、前置步骤及对外话术。',MODEL_NOT_CONFIGURED:'模型尚未配置。',MODEL_ANALYSIS_INVALID:'模型返回的规则或证据无效，请重试。'})[data.error]||data.error);
+    if(kind==='draft'){
+      const ids=new Map(data.flow.rules.map(r=>[r.id,crypto.randomUUID()]));
+      flowRules=data.flow.rules.map(r=>({...r,id:ids.get(r.id),after:ids.get(r.after)||''}));
+      $('flow-fallback').value=data.flow.fallback;
+      flowChanged();renderFlowRules();flowFeedback('草稿已生成，可调整优先顺序和话术，保存后生效。');
+    }else{
+      const label={send:'发送话术',wait:'等待来信',handoff:'转人工'}[data.action]||data.action;
+      flowFeedback([label,data.reason,data.text,...(data.evidence||[]).map(e=>'判定依据 · '+e.quote)].filter(Boolean).join('\n'));
+    }
+  }catch(e){flowFeedback('处理失败 · '+e.message);}
+  finally{jobBusyState(false);}
+}
+$('flow-generate').onclick=()=>flowRequest('draft');
+$('flow-preview').onclick=()=>flowRequest('preview');
+
 function editJob(job){
   selectedJobId=job.id;
   editingJobStatus=job.status;
   const portfolio=job.status==='manual_portfolio';
+  const dynamic=job.status==='dynamic';
   const manual=portfolio||job.status==='manual_draft';
+  $('flow-editor').hidden=!dynamic;
+  $('job-notes').hidden=dynamic;
+  $('flow-doc').value=dynamic?job.requirements:'';
+  $('flow-url').value=dynamic?job.url||'':'';
+  $('flow-sample').value='';
+  $('flow-feedback').hidden=true;
+  $('flow-fallback').value=job.flow?.fallback||'handoff';
+  flowRules=structuredClone(job.flow?.rules||[]);
+  renderFlowRules();
   $('portfolio-rules').hidden=!portfolio;
   $('portfolio-entry').hidden=!portfolio||!jobs.some(item=>item.id===job.id);
   $('portfolio-link').href='/portfolio?job='+encodeURIComponent(job.id);
@@ -97,12 +207,12 @@ function editJob(job){
   $('pf-majors').value=(job.majors||[]).join('\n');
   $('job-draft-status').hidden=job.status!=='manual_draft';
   $('job-binding').hidden=manual;
-  $('job-automatic-rules').hidden=manual;
-  $('job-education').required=!manual;
+  $('job-automatic-rules').hidden=manual||dynamic;
+  $('job-education').required=!manual&&!dynamic;
   $('job-form').classList.toggle('manual-draft',manual);
   $('job-rules-label').textContent=manual?'岗位要求与判定规则':'资料核验补充要求';
   $('job-prompt-label').textContent=manual?'人工流程与话术':'AI 提示词补充';
-  const opts=jobs.map(item=>new Option(item.name+(item.status==='manual_draft'?'（草案）':item.status==='manual_portfolio'?'（无问卷）':''),item.id));
+  const opts=jobs.map(item=>new Option(item.name+(item.status==='manual_draft'?'（草案）':item.status==='manual_portfolio'?'（无问卷）':item.status==='dynamic'?'（动态）':''),item.id));
   if(!jobs.some(item=>item.id===job.id))opts.push(new Option('新增岗位',job.id));
   $('job-select').replaceChildren(...opts);
   $('job-select').value=job.id;
@@ -115,6 +225,12 @@ function editJob(job){
   $('job-result').textContent='';
 }
 function readJobForm(){
+  if(editingJobStatus==='dynamic'){
+    const name=$('job-name').value.trim();
+    const titles=$('job-titles').value.split(/[、,，\n]/).map(v=>v.trim()).filter(Boolean);
+    return {id:selectedJobId,status:'dynamic',name,acceptedTitles:titles.length?titles:[name],requirements:$('flow-doc').value,
+      url:$('flow-url').value.trim(),flow:{rules:flowRules,fallback:$('flow-fallback').value}};
+  }
   if(editingJobStatus==='manual_portfolio'){
     const parts=id=>$(id).value.split(/[、,，\n]/).map(v=>v.trim()).filter(Boolean);
     return {id:selectedJobId,status:editingJobStatus,acceptedTitles:[],name:$('job-name').value.trim(),

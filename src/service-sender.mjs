@@ -27,6 +27,14 @@ export async function executeServicePlan({store,browser,config,conversationId,fi
   const baseId='auto-'+createHash('sha256').update(conversationId+'|'+fingerprint+'|'+plan.messageId+'|'+plan.text).digest('hex').slice(0,32);
   let id=baseId;
   const allowed=new Set(['S1','S3','S4','S6','S7','DECLINE_TEST','IDENTITY','HUMAN']);
+  if(plan.messageId==='FLOW_REPLY'){
+    const candidate=store.snapshot().conversations[conversationId];
+    const job=config.jobProfiles?.jobs.find(j=>j.status==='dynamic'&&j.id===plan.flowRule?.jobId&&j.acceptedTitles.includes(candidate?.jobTitle));
+    const rule=job?.flow.rules.find(r=>r.id===plan.flowRule.id);
+    const delivered=candidate?.workflow?.flowProgress;
+    const prior=delivered?.jobId===job?.id ? delivered?.delivered||[] : [];
+    if(rule?.action==='reply'&&rule.text===plan.text&&!prior.includes(rule.id)&&(!rule.after||prior.includes(rule.after)))allowed.add('FLOW_REPLY');
+  }
   if(config.mode!=='automatic'||config.allowSend!==true||!allowed.has(plan.messageId)||typeof plan.text!=='string'||!plan.text.trim()||plan.text.length>1500)fail('AUTO_SEND_NOT_ALLOWED');
   if(plan.messageId==='S3'){
     if(!config.allowAssessment)fail('ASSESSMENT_NOT_CONFIGURED');

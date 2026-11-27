@@ -1,7 +1,11 @@
 import {getModelSettings,buildModelContext} from './monitor-model.mjs';
+import {analyzeDynamic} from './dynamic-flow.mjs';
 import {validateAnalysis,incomingBatch} from './recruiting-workflow.mjs';
 
 export async function analyzeWorkflow({config,conversation,policy,fetchImpl=fetch}) {
+  if(policy.job?.status==='dynamic' && !['waiting_consent','test_pending'].includes(conversation.workflow?.stage)){
+    return analyzeDynamic({config,conversation,job:policy.job,fetchImpl});
+  }
   const settings=getModelSettings(config);
   const fail=code=>Object.assign(new Error(code),{code});
   if(!settings.ready||!config.model.enabled)throw fail('MODEL_NOT_CONFIGURED');

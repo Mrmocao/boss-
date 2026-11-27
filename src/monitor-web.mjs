@@ -1,3 +1,5 @@
+import {cleanFlow,analyzeDynamic,draftDynamicFlow} from './dynamic-flow.mjs';
+import {loadWorkflowPolicy,planWorkflow} from './recruiting-workflow.mjs';
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {dirname,resolve} from 'node:path';
@@ -62,6 +64,24 @@ export async function startMonitorWeb({port=19336,root=monitorRoot,monitorRoots=
       }
       if(req.method==='GET'&&req.url==='/portfolio.js'){
         res.writeHead(200,{'Content-Type':'text/javascript; charset=utf-8'});res.end(portfolioScript);return;
+      }
+      if(['/api/flow/draft','/api/flow/preview'].includes(req.url)&&req.method==='POST'){
+        if(req.headers['x-csrf-token']!==token||req.headers.origin!==origin||!req.headers['content-type']?.startsWith('application/json'))return json(403,{error:'INVALID_REQUEST_ORIGIN'});
+        const chunks=[];let size=0;
+        for await(const chunk of req){size+=chunk.length;if(size>200000)return json(413,{error:'REQUEST_TOO_LARGE'});chunks.push(chunk);}
+        try{
+          const input=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+          const file=settingsPath||await resolveSkillConfig();
+          const config=await applySkillConfig({model:{configFile:file}},dirname(file));
+          if(req.url==='/api/flow/draft')return json(200,{flow:await draftDynamicFlow(config,input.requirements)});
+          if(typeof input.sample!=='string'||!input.sample.trim()||input.sample.length>3000)return json(400,{error:'FLOW_SAMPLE_REQUIRED'});
+          const job={id:'preview',status:'dynamic',name:String(input.name||'新岗位').slice(0,80),requirements:String(input.requirements||'').slice(0,6000),flow:cleanFlow(input.flow)};
+          const conversation={messages:[{direction:'incoming',text:input.sample}],workflow:{stage:'screening'}};
+          const analysis=await analyzeDynamic({config,conversation,job});
+          const policy={...await loadWorkflowPolicy(),job};
+          const plan=planWorkflow(conversation,analysis,policy,config);
+          return json(200,{action:plan.type,reason:plan.reason||plan.screening?.reason,text:plan.text,evidence:plan.screening?.evidence});
+        }catch(e){return json(e.code?.startsWith('MODEL_')?502:400,{error:e.code||'FLOW_REQUEST_FAILED'});}
       }
       const portfolioRoute=/^\/api\/portfolio\/([a-z0-9-]{1,64})$/.exec(req.url);
       if(portfolioRoute&&['GET','POST'].includes(req.method)){

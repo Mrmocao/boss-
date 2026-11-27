@@ -320,6 +320,10 @@ export async function runMonitor({once = false, root = monitorRoot, config,
                 await processCommands(store,browser,root,runId,config);
                 current=store.snapshot().conversations[c.id];
                 if(current.fingerprint!==fingerprint||!dueConversations(store.snapshot(),config).some(x=>x.id===c.id))continue;
+                if(jobPolicy.job?.status==='dynamic'){
+                  const latest=(await readJobProfiles()).jobs.find(job=>job.acceptedTitles.includes(current.jobTitle));
+                  if(JSON.stringify(latest)!==JSON.stringify(jobPolicy.job))continue;
+                }
                 const plan=planWorkflow(current,analysis,jobPolicy,jobConfig,store.snapshot().sentIntents);
                 await store.transaction(s=>recordPlan(s,c.id,fingerprint,plan,analysis));
                 if(plan.type==='reject_attachment') {
