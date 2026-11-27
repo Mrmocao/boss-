@@ -59,6 +59,10 @@ function clean(job,existing){
     if(automatic&&!acceptedTitles.length)fail('INVALID_JOB_EDUCATION_OR_TITLE');
     const rules=automatic?{delivery:'automatic'}:{};
     if(status==='manual_portfolio'){
+      if(!automatic){
+        const titles=existing?.acceptedTitles?.length?existing.acceptedTitles:existing?.savedTitles;
+        if(titles?.length)rules.savedTitles=titles;
+      }
       portfolioTemplates(field(job.prompt,6000,true));
       rules.education=list(job.education,30);
       rules.majors=list(job.majors,300);

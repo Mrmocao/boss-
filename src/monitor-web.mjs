@@ -56,9 +56,9 @@ export async function startMonitorWeb({port=19336,root=monitorRoot,monitorRoots=
     const json=(code,data)=>{res.writeHead(code,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data));};
     if(req.headers.host!==`127.0.0.1:${server.address().port}`||(req.headers.origin&&req.headers.origin!==origin))return json(403,{error:'LOCAL_ORIGIN_REQUIRED'});
     try {
-      if(req.method==='GET'&&req.url==='/'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});res.end(dashboardHtml.replace('__CSRF_TOKEN__',token));return;}
-      if(req.method==='GET'&&req.url==='/dashboard.js'){res.writeHead(200,{'Content-Type':'text/javascript; charset=utf-8'});res.end(javascript);return;}
       const requestUrl=new URL(req.url,origin);
+      if(req.method==='GET'&&requestUrl.pathname==='/'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});res.end(dashboardHtml.replace('__CSRF_TOKEN__',token));return;}
+      if(req.method==='GET'&&req.url==='/dashboard.js'){res.writeHead(200,{'Content-Type':'text/javascript; charset=utf-8'});res.end(javascript);return;}
       if(req.method==='GET'&&requestUrl.pathname==='/portfolio'){
         res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});res.end(portfolioHtml.replace('__CSRF_TOKEN__',token));return;
       }

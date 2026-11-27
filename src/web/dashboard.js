@@ -5,7 +5,7 @@ const monitorErrors={CDP_UNAVAILABLE:'专用浏览器未连接',CDP_TIMEOUT:'浏
 const text=(tag,value='',cls)=>{const e=document.createElement(tag);e.textContent=value??'—';if(cls)e.className=cls;return e;};
 const fmt=v=>v?new Date(v).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}):'—';
 const truncate=(v,n=95)=>String(v||'').length>n?String(v).slice(0,n)+'…':String(v||'');
-let data,lastSelection=null,page=0,seen=new Set(),initialized=false,notify=false,settingsRevision=null,savedRevision=null,workflowRevision=null,dirty=false,pageName='overview',editingAccountId=null,jobsRevision=null,jobs=[],selectedJobId=null;
+let data,lastSelection=null,page=0,seen=new Set(),initialized=false,notify=false,settingsRevision=null,savedRevision=null,workflowRevision=null,dirty=false,pageName='overview',editingAccountId=null,jobsRevision=null,jobs=[],selectedJobId=new URLSearchParams(location.search).get('job');
 const drafts=new Map(),PAGE_SIZE=12;
 const draftReports=new Map();
 async function reportDraft(c,hasDraft){
@@ -218,10 +218,15 @@ function editJob(job){
   if(!jobs.some(item=>item.id===job.id))opts.push(new Option('新增岗位',job.id));
   $('job-select').replaceChildren(...opts);
   $('job-select').value=job.id;
+  const url=new URL(location.href);
+  if(jobs.some(item=>item.id===job.id))url.searchParams.set('job',job.id);
+  else url.searchParams.delete('job');
+  history.replaceState(null,'',url);
   for(const [key,id] of Object.entries(jobFormFields)){
     const value=job[key];
     $('job-'+id).value=Array.isArray(value)?value.join(key==='majors'?'\n':'、'):(value??'');
   }
+  if(portfolio&&!job.acceptedTitles?.length)$('job-titles').value=(job.savedTitles||[]).join('、');
   $('job-senior').checked=job.senior;
   jobDirty=false;
   $('job-result').textContent='';

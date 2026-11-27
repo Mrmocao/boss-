@@ -1,6 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const jobId = new URLSearchParams(location.search).get('job') || '';
+$('delivery-settings').href='/?job='+encodeURIComponent(jobId)+'#settings';
 const endpoint = '/api/portfolio/'+encodeURIComponent(jobId);
 const token = document.querySelector('meta[name=csrf]').content;
 const sourceKeys = ['chat','profile','resume'];
