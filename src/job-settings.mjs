@@ -44,7 +44,13 @@ function list(value,max){
   if(!Array.isArray(value)||value.length>max)fail('INVALID_JOB_PROFILE');
   return [...new Set(value.map(item=>field(item,100,true)))];
 }
-function clean(job){
+function clean(job,existing){
+  if(job?.status==='manual_draft'||existing?.status==='manual_draft'){
+    const id=field(job.id,64,true);
+    if(!/^[a-z0-9-]+$/.test(id)||job.acceptedTitles?.length)fail('INVALID_JOB_PROFILE');
+    return {id,name:field(job.name,80,true),status:'manual_draft',acceptedTitles:[],
+      requirements:field(job.requirements,6000,true),prompt:field(job.prompt,6000,true)};
+  }
   if(!job)fail('INVALID_JOB_PROFILE');
   const id=field(job.id,64,true);
   if(!/^[a-z0-9-]+$/.test(id)||typeof job.senior!=='boolean')fail('INVALID_JOB_PROFILE');
@@ -62,7 +68,7 @@ export async function saveJobProfiles(path,input,{verify=verifyAssessmentDownloa
   const task=prior.catch(()=>{}).then(async()=>{
     const current=await readJobProfiles(path);
     if(input?.revision!==current.revision)fail('SETTINGS_CHANGED');
-    const job=clean(input.job);
+    const job=clean(input.job,current.jobs.find(item=>item.id===input.job?.id));
     if(current.jobs.some(other=>other.id!==job.id&&other.acceptedTitles.some(title=>job.acceptedTitles.includes(title))))fail('JOB_TITLE_IN_USE');
     const index=current.jobs.findIndex(other=>other.id===job.id);
     if(job.url&&job.url!==current.jobs[index]?.url){

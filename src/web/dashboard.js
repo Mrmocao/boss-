@@ -85,19 +85,31 @@ function jobBusyState(busy){
 }
 function editJob(job){
   selectedJobId=job.id;
-  const opts=jobs.map(item=>new Option(item.name,item.id));
+  const manual=job.status==='manual_draft';
+  $('job-draft-status').hidden=!manual;
+  $('job-binding').hidden=manual;
+  $('job-automatic-rules').hidden=manual;
+  $('job-education').required=!manual;
+  $('job-form').classList.toggle('manual-draft',manual);
+  $('job-rules-label').textContent=manual?'岗位要求与判定规则':'资料核验补充要求';
+  $('job-prompt-label').textContent=manual?'人工流程与话术':'AI 提示词补充';
+  const opts=jobs.map(item=>new Option(item.name+(item.status==='manual_draft'?'（草案）':''),item.id));
   if(!jobs.some(item=>item.id===job.id))opts.push(new Option('新增岗位',job.id));
   $('job-select').replaceChildren(...opts);
   $('job-select').value=job.id;
   for(const [key,id] of Object.entries(jobFormFields)){
     const value=job[key];
-    $('job-'+id).value=Array.isArray(value)?value.join(key==='majors'?'\n':'、'):value;
+    $('job-'+id).value=Array.isArray(value)?value.join(key==='majors'?'\n':'、'):(value??'');
   }
   $('job-senior').checked=job.senior;
   jobDirty=false;
   $('job-result').textContent='';
 }
 function readJobForm(){
+  if(jobs.find(item=>item.id===selectedJobId)?.status==='manual_draft'){
+    return {id:selectedJobId,name:$('job-name').value.trim(),status:'manual_draft',acceptedTitles:[],
+      requirements:$('job-requirements').value,prompt:$('job-prompt').value};
+  }
   const job={id:selectedJobId,senior:$('job-senior').checked};
   for(const [key,id] of Object.entries(jobFormFields)){
     const value=$('job-'+id).value.trim();
@@ -141,7 +153,7 @@ $('job-form').onsubmit=async(event)=>{
     if(!response.ok)throw Error(errors[view.error]||view.error);
     jobs=view.jobs;jobsRevision=view.revision;
     editJob(jobs.find(item=>item.id===job.id));
-    $('job-result').textContent='已保存。运行中的账号将在下一轮监控时读取。';
+    $('job-result').textContent=job.status==='manual_draft'?'岗位草案已保存。':'已保存。运行中的账号将在下一轮监控时读取。';
   }catch(e){$('job-result').textContent='保存失败：'+e.message;}
   finally{jobBusyState(false);}
 };

@@ -35,3 +35,14 @@ test('new job routes only its titles to its screening, questionnaire and branche
   assert.equal(send.messageId,'S3');
   assert.ok(send.text.includes(job.url));
 });
+
+test('manual draft survives edits without admitting conversations',async t=>{
+  const dir=await mkdtemp(join(tmpdir(),'manual-job-'));
+  t.after(()=>rm(dir,{recursive:true,force:true}));
+  const path=join(dir,'jobs.json'),initial=await readJobProfiles(path);
+  const draft={id:'art-draft',name:'原画实习',acceptedTitles:[],status:'manual_draft',requirements:'规则',prompt:'话术'};
+  const saved=await saveJobProfiles(path,{revision:initial.revision,job:draft});
+  assert.deepEqual(saved.jobs.at(-1),draft);
+  assert.deepEqual(saved.jobs.flatMap(job=>job.acceptedTitles),initial.jobs.flatMap(job=>job.acceptedTitles));
+  await assert.rejects(saveJobProfiles(path,{revision:saved.revision,job:{...draft,status:undefined,acceptedTitles:['原画实习']}}),{code:'INVALID_JOB_PROFILE'});
+});
