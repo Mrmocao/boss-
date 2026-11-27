@@ -1,14 +1,14 @@
 import {getModelSettings,buildModelContext} from './monitor-model.mjs';
-import {analyzePortfolio} from './portfolio-workflow.mjs';
+import {analyzePortfolio,portfolioSources,greetingFacts} from './portfolio-workflow.mjs';
 import {analyzeDynamic} from './dynamic-flow.mjs';
 import {validateAnalysis,incomingBatch} from './recruiting-workflow.mjs';
 
 export async function analyzeWorkflow({config,conversation,policy,fetchImpl=fetch}) {
   if(policy.job?.status==='manual_portfolio'&&policy.job.delivery==='automatic'){
     const context=buildModelContext(conversation);
-    const chat=context.messages.filter(m=>m.direction==='incoming').map(m=>m.text).join('\n').slice(-6000);
-    const facts=await analyzePortfolio(config,policy.job,{chat,profile:context.education.join('\n'),resume:''},fetchImpl);
-    return {portfolioFacts:facts,concern:{kind:facts.concern?'abnormal':'none'}};
+    const sources=portfolioSources(conversation.detail?.candidate,context);
+    const facts=greetingFacts(sources,conversation.jobTitle)??await analyzePortfolio(config,policy.job,sources,fetchImpl);
+    return {portfolioFacts:facts,concern:{kind:'none'}};
   }
   if(policy.job?.status==='dynamic' && !['waiting_consent','test_pending'].includes(conversation.workflow?.stage)){
     return analyzeDynamic({config,conversation,job:policy.job,fetchImpl});

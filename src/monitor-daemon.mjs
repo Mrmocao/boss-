@@ -139,6 +139,8 @@ export async function processCommands(store, browser, root, runId, config) {
       if (request.command === 'resume-conversation') {
         const c = store.snapshot().conversations[request.conversationId];
         if (!c || c.admitted === false) throw Object.assign(new Error('Unknown conversation'), {code:'CONVERSATION_UNKNOWN'});
+        const page=await browser.poll({force:true});
+        if(page.selectedRow?.domRowId!==c.domRowId)await browser.openConversation(c,{reviewOnly:true});
         await browser.resumeConversation(c);
         // Capture replies made during takeover before explicitly resetting the outgoing baseline.
         const snapshot = await browser.poll({force:true});
@@ -337,7 +339,7 @@ export async function runMonitor({once = false, root = monitorRoot, config,
                 } else if(plan.type==='send_file')await executeAssessmentFile({store,browser,config:jobConfig,conversationId:c.id,fingerprint,plan,textSender:sender,processControls:()=>processCommands(store,browser,root,runId,config)});
                 else if(plan.type==='send')await sender({store,browser,config:jobConfig,conversationId:c.id,fingerprint,plan,processControls:()=>processCommands(store,browser,root,runId,config)});
               } catch(e) {
-                if(!['CONTEXT_CHANGED','QUIET_PERIOD_PENDING','WAITING_FOR_PEER','OBSERVATION_CHANGED','DETAIL_CHANGED','CONVERSATION_MISMATCH','HUMAN_ACTIVE'].includes(e.code))await store.transaction(s=>{if(!s.conversations[c.id]?.human_handoff)markHandoff(s,c.id,e.code||'自动处理异常');});
+                if(!['CONTEXT_CHANGED','QUIET_PERIOD_PENDING','WAITING_FOR_PEER','OBSERVATION_CHANGED','DETAIL_CHANGED','CONVERSATION_MISMATCH','HUMAN_ACTIVE'].includes(e.code))await store.transaction(s=>{if(!s.conversations[c.id]?.human_handoff)markHandoff(s,c.id,typeof e.code==='string'?e.code:(e.name==='AbortError'?'MODEL_TIMEOUT':'AUTOMATION_ERROR'));});
               }
               continue;
             }

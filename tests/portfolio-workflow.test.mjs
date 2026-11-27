@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {portfolioTemplates,screenPortfolio,validateFacts} from '../src/portfolio-workflow.mjs';
+import {portfolioTemplates,screenPortfolio,validateFacts,portfolioSources,greetingFacts} from '../src/portfolio-workflow.mjs';
 import {listPortfolioCases,updatePortfolioCase} from '../src/portfolio-cases.mjs';
 
 const job=JSON.parse(await readFile(new URL('../config/concept-art-intern.json',import.meta.url)));
@@ -109,4 +109,30 @@ test('portfolio title binding can be enabled and disabled; BOSS uses only the po
   assert.equal(plan(qualified).type,'wait');
   const manual=await saveJobProfiles(path,{revision:saved.revision,job:{...automatic,delivery:'manual',acceptedTitles:[]}});
   assert.deepEqual(manual.jobs.find(j=>j.id===job.id).acceptedTitles,[]);
+});
+
+test('BOSS badge, education period and matching graduation statement support the pass decision',()=>{
+ const profile={summaryText:'27年应届生',profileText:'2023-2027'};
+ const context={education:['美术学院 · 动画 · 本科'],messages:[{direction:'incoming',text:'Boss您好，我是27年毕业生，可以和您进一步沟通原画这个职位吗？'}]};
+ const sources=portfolioSources(profile,context);
+ assert.equal(screenPortfolio(job,greetingFacts(sources,'原画',new Date('2026-11-27')),false).step,'S2');
+ assert.equal(greetingFacts({...sources,chat:sources.chat.replace('27年','26年')},'原画'),null);
+ assert.equal(greetingFacts({...sources,profile:sources.profile.replace('2023-2027','2023-2026')},'原画'),null);
+ assert.equal(greetingFacts({...sources,chat:sources.chat+'请问薪资？'},'原画'),null);
+});
+
+test('missing portfolio facts create one clarification instead of an exception handoff',()=>{
+ const policy={job:{...job,delivery:'automatic'},messages:{}};
+ const c={id:'missing',jobTitle:'角色原画师（可接受实习生）',messages:[{direction:'incoming',text:'我对这个岗位感兴趣'}],workflow:{stage:'screening'}};
+ const plan=planWorkflow(c,{portfolioFacts:{level:{value:'本科'},major:{value:'动画'}},concern:{kind:'none'}},policy,{});
+ assert.equal(plan.messageId,'S6');
+});
+
+test('qualified inquiry gets the invite; only a verified pending card triggers rejection',()=>{
+ const policy={job:{...job,delivery:'automatic'},messages:{}};
+ const c={id:'attachment',jobTitle:'角色原画师（可接受实习生）',messages:[{direction:'incoming',text:'可以把简历发给您吗？'}],workflow:{stage:'screening'}};
+ const plan=planWorkflow(c,{portfolioFacts:{level:{value:'本科'},year:{value:'2027'},enrollment:{value:'在读'},major:{value:'动画'},attachment:{value:'附件请求'}},concern:{kind:'none'}},policy,{});
+ assert.equal(plan.messageId,'PORTFOLIO_INVITE');
+ c.detail={attachmentRequests:[{status:'pending'}]};
+ assert.equal(planWorkflow(c,{portfolioFacts:{},concern:{kind:'none'}},policy,{}).type,'reject_attachment');
 });
