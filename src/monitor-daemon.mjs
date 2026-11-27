@@ -320,7 +320,7 @@ export async function runMonitor({once = false, root = monitorRoot, config,
                 await processCommands(store,browser,root,runId,config);
                 current=store.snapshot().conversations[c.id];
                 if(current.fingerprint!==fingerprint||!dueConversations(store.snapshot(),config).some(x=>x.id===c.id))continue;
-                if(jobPolicy.job?.status==='dynamic'){
+                if(jobPolicy.job?.status==='dynamic'||jobPolicy.job?.delivery==='automatic'){
                   const latest=(await readJobProfiles()).jobs.find(job=>job.acceptedTitles.includes(current.jobTitle));
                   if(JSON.stringify(latest)!==JSON.stringify(jobPolicy.job))continue;
                 }

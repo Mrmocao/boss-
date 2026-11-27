@@ -206,12 +206,14 @@ function editJob(job){
   $('pf-grades').value=(job.blockedGrades||[]).join('、');
   $('pf-majors').value=(job.majors||[]).join('\n');
   $('job-draft-status').hidden=job.status!=='manual_draft';
-  $('job-binding').hidden=manual;
+  $('portfolio-mode').hidden=!portfolio;
+  $('pf-delivery').value=job.delivery||'manual';
+  $('job-binding').hidden=manual&&job.delivery!=='automatic';
   $('job-automatic-rules').hidden=manual||dynamic;
   $('job-education').required=!manual&&!dynamic;
   $('job-form').classList.toggle('manual-draft',manual);
   $('job-rules-label').textContent=manual?'岗位要求与判定规则':'资料核验补充要求';
-  $('job-prompt-label').textContent=manual?'人工流程与话术':'AI 提示词补充';
+  $('job-prompt-label').textContent=manual?'岗位流程与话术':'AI 提示词补充';
   const opts=jobs.map(item=>new Option(item.name+(item.status==='manual_draft'?'（草案）':item.status==='manual_portfolio'?'（无问卷）':item.status==='dynamic'?'（动态）':''),item.id));
   if(!jobs.some(item=>item.id===job.id))opts.push(new Option('新增岗位',job.id));
   $('job-select').replaceChildren(...opts);
@@ -224,6 +226,7 @@ function editJob(job){
   jobDirty=false;
   $('job-result').textContent='';
 }
+$('pf-delivery').onchange=()=>{$('job-binding').hidden=$('pf-delivery').value!=='automatic';};
 function readJobForm(){
   if(editingJobStatus==='dynamic'){
     const name=$('job-name').value.trim();
@@ -233,7 +236,9 @@ function readJobForm(){
   }
   if(editingJobStatus==='manual_portfolio'){
     const parts=id=>$(id).value.split(/[、,，\n]/).map(v=>v.trim()).filter(Boolean);
-    return {id:selectedJobId,status:editingJobStatus,acceptedTitles:[],name:$('job-name').value.trim(),
+    const delivery=$('pf-delivery').value;
+    const titles=parts('job-titles');
+    return {id:selectedJobId,status:editingJobStatus,delivery,acceptedTitles:delivery==='automatic'?(titles.length?titles:[$('job-name').value.trim()]):[],name:$('job-name').value.trim(),
       requirements:$('job-requirements').value,prompt:$('job-prompt').value,cohort:$('pf-cohort').value,
       education:parts('pf-education'),majors:parts('pf-majors'),blockedGrades:parts('pf-grades')};
   }
@@ -291,7 +296,7 @@ $('job-form').onsubmit=async(event)=>{
     if(!response.ok)throw Error(errors[view.error]||view.error);
     jobs=view.jobs;jobsRevision=view.revision;
     editJob(jobs.find(item=>item.id===job.id));
-    $('job-result').textContent=job.status==='manual_draft'?'岗位草案已保存。':job.status==='manual_portfolio'?'已保存，可打开候选人工作台。':'已保存。运行中的账号将在下一轮监控时读取。';
+    $('job-result').textContent=job.status==='manual_draft'?'岗位草案已保存。':job.status==='manual_portfolio'?(job.delivery==='automatic'?'已保存，监控将按绑定的 BOSS 职位自动回复。':'已保存，可打开候选人工作台。'):'已保存。运行中的账号将在下一轮监控时读取。';
   }catch(e){$('job-result').textContent='保存失败：'+e.message;}
   finally{jobBusyState(false);}
 };

@@ -3,7 +3,7 @@ import {loadWorkflowPolicy,planWorkflow} from './recruiting-workflow.mjs';
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {dirname,resolve} from 'node:path';
-import {listPortfolioCases,updatePortfolioCase} from './portfolio-cases.mjs';
+import {syncPortfolioInvites,updatePortfolioCase} from './portfolio-cases.mjs';
 import {analyzePortfolio} from './portfolio-workflow.mjs';
 import {applySkillConfig} from './skill-config.mjs';
 import {pathToFileURL} from 'node:url';
@@ -89,7 +89,7 @@ export async function startMonitorWeb({port=19336,root=monitorRoot,monitorRoots=
         const job=(await readJobProfiles(jobProfilesFile)).jobs.find(j=>j.id===portfolioRoute[1]&&j.status==='manual_portfolio');
         if(!job)return json(404,{error:'PORTFOLIO_JOB_REQUIRED'});
         const casesRoot=resolve(dirname(jobProfilesFile),'portfolio-cases');
-        if(req.method==='GET')return json(200,{job:job.name,cases:await listPortfolioCases(casesRoot,job.id)});
+        if(req.method==='GET')return json(200,{job:job.name,cases:await syncPortfolioInvites(casesRoot,job,monitorRoots)});
         if(req.headers.origin!==origin||!req.headers['content-type']?.startsWith('application/json'))return json(403,{error:'INVALID_REQUEST_ORIGIN'});
         const chunks=[];let size=0;
         for await(const chunk of req){size+=chunk.length;if(size>100000)return json(413,{error:'REQUEST_TOO_LARGE'});chunks.push(chunk);}

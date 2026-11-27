@@ -1,4 +1,5 @@
 import {createHash,randomUUID} from 'node:crypto';
+import {portfolioTemplates} from './portfolio-workflow.mjs';
 import {followupExpression} from './authorized-followup.mjs';
 import {ingestSnapshot,markHandoff} from './monitor-core.mjs';
 import {confirmWorkflowSend,questionnaireUrl} from './recruiting-workflow.mjs';
@@ -27,6 +28,11 @@ export async function executeServicePlan({store,browser,config,conversationId,fi
   const baseId='auto-'+createHash('sha256').update(conversationId+'|'+fingerprint+'|'+plan.messageId+'|'+plan.text).digest('hex').slice(0,32);
   let id=baseId;
   const allowed=new Set(['S1','S3','S4','S6','S7','DECLINE_TEST','IDENTITY','HUMAN']);
+  if(plan.messageId==='PORTFOLIO_INVITE'){
+    const title=store.snapshot().conversations[conversationId]?.jobTitle;
+    const job=config.jobProfiles?.jobs.find(j=>j.id===plan.portfolioJobId&&j.acceptedTitles.includes(title));
+    if(job?.delivery==='automatic'&&job.status==='manual_portfolio'&&portfolioTemplates(job.prompt).S2===plan.text)allowed.add('PORTFOLIO_INVITE');
+  }
   if(plan.messageId==='FLOW_REPLY'){
     const candidate=store.snapshot().conversations[conversationId];
     const job=config.jobProfiles?.jobs.find(j=>j.status==='dynamic'&&j.id===plan.flowRule?.jobId&&j.acceptedTitles.includes(candidate?.jobTitle));
@@ -95,7 +101,8 @@ export async function executeServicePlan({store,browser,config,conversationId,fi
     await store.transaction(s=>{
       const record=s.conversations[conversationId];
       record.knownOutboundContents=[...new Set([...(record.knownOutboundContents||[]),plan.text])];
-      Object.assign(s.sentIntents[id],{status:'sent_confirmed',receipt});record.lastOutbound={intentId:id,text:plan.text,receipt};
+      Object.assign(s.sentIntents[id],{status:'sent_confirmed',receipt});
+      if(plan.messageId==='PORTFOLIO_INVITE')Object.assign(s.sentIntents[id],{portfolioJobId:plan.portfolioJobId,candidateName:record.name});record.lastOutbound={intentId:id,text:plan.text,receipt};
       ingestSnapshot(s,after,config,clock());
       confirmWorkflowSend(s,conversationId,plan,id);
       if(plan.humanReply){record.human_handoff=true;record.status='human_review';record.lastManualReplyAt=now();record.handoff={...record.handoff,lastRepliedAt:now(),replyQueued:false,draftPresent:false,reviewVersion:(record.handoff?.reviewVersion||0)+1};}

@@ -51,9 +51,13 @@ function list(value,max){
 function clean(job,existing){
   if(job?.status==='manual_portfolio'||existing?.status==='manual_portfolio'||job?.status==='manual_draft'||existing?.status==='manual_draft'){
     const id=field(job.id,64,true);
-    if(!/^[a-z0-9-]+$/.test(id)||job.acceptedTitles?.length)fail('INVALID_JOB_PROFILE');
+    if(!/^[a-z0-9-]+$/.test(id))fail('INVALID_JOB_PROFILE');
     const status=job.status==='manual_portfolio'||existing?.status==='manual_portfolio'?'manual_portfolio':'manual_draft';
-    const rules={};
+    const automatic=status==='manual_portfolio'&&job.delivery==='automatic';
+    if(!automatic&&job.acceptedTitles?.length)fail('INVALID_JOB_PROFILE');
+    const acceptedTitles=automatic?list(job.acceptedTitles,50):[];
+    if(automatic&&!acceptedTitles.length)fail('INVALID_JOB_EDUCATION_OR_TITLE');
+    const rules=automatic?{delivery:'automatic'}:{};
     if(status==='manual_portfolio'){
       portfolioTemplates(field(job.prompt,6000,true));
       rules.education=list(job.education,30);
@@ -62,7 +66,7 @@ function clean(job,existing){
       rules.cohort=field(job.cohort,4,true);
       if(!/^\d{4}$/.test(rules.cohort)||!rules.education.length||!rules.majors.length)fail('INVALID_JOB_PROFILE');
     }
-    return {id,name:field(job.name,80,true),status,...rules,acceptedTitles:[],
+    return {id,name:field(job.name,80,true),status,...rules,acceptedTitles,
       requirements:field(job.requirements,6000,true),prompt:field(job.prompt,6000,true)};
   }
   if(!job)fail('INVALID_JOB_PROFILE');

@@ -116,7 +116,7 @@ export async function listPortfolioCases(root,jobId) {
   return rows.filter(row=>row.jobId===jobId).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export async function updatePortfolioCase(root,job,input,analyze) {
+export async function updatePortfolioCase(root,job,input,analyze,confirmedInvite=null) {
   let id = input.id;
   if (input.action === 'create') {
     const account=string(input.account,100,true), reference=string(input.reference,120,true);
@@ -134,6 +134,11 @@ export async function updatePortfolioCase(root,job,input,analyze) {
     } else {
       requireState(row && row.jobId===job.id && row.revision===input.revision);
     }
+    if(confirmedInvite && input.action==='create'){
+      row.stage='已引导投递';
+      row.note='BOSS 投递引导已确认发送，请核对邮箱中的简历和作品集。';
+      row.inviteIntentId=confirmedInvite.id;
+    }
     await transition(row,job,input,analyze);
     row.updatedAt=new Date().toISOString();
     row.revision++;
@@ -146,4 +151,23 @@ export async function updatePortfolioCase(root,job,input,analyze) {
   });
   queues.set(path,next);
   try {return await next;} finally {if(queues.get(path)===next) queues.delete(path);}
+}
+
+export async function syncPortfolioInvites(root,job,monitorRoots){
+  const records=await listPortfolioCases(root,job.id);
+  const known=new Set(records.map(row=>JSON.stringify([row.account,row.reference])));
+  for(const [account,monitorRoot] of Object.entries(monitorRoots)){
+    let state;
+    try{state=JSON.parse(await readFile(join(monitorRoot,'state.json'),'utf8'));}
+    catch(e){if(e.code==='ENOENT')continue;throw e;}
+    for(const intent of Object.values(state.sentIntents||{})){
+      if(intent.status!=='sent_confirmed'||intent.messageId!=='PORTFOLIO_INVITE'||intent.portfolioJobId!==job.id)continue;
+      const reference=intent.conversationId,key=JSON.stringify([account,reference]);
+      if(known.has(key))continue;
+      const input={action:'create',name:intent.candidateName||reference,reference,account};
+      records.push(await updatePortfolioCase(root,job,input,null,intent));
+      known.add(key);
+    }
+  }
+  return records.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
 }

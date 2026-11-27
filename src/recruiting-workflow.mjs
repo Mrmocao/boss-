@@ -1,3 +1,4 @@
+import {portfolioTemplates,screenPortfolio} from './portfolio-workflow.mjs';
 import { planDynamic } from './dynamic-flow.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -77,7 +78,7 @@ export function recoverWorkflow(c,intents={}) {
   c.workflow ??= {stage:'screening'};
   const confirmed=Object.values(intents).filter(i=>i.conversationId===c.id&&i.status==='sent_confirmed');
   if(c.workflow.stage==='screening') {
-    if(confirmed.some(i=>i.messageId==='S3'))c.workflow.stage='waiting_email';
+    if(confirmed.some(i=>i.messageId==='S3'||i.messageId==='PORTFOLIO_INVITE'))c.workflow.stage='waiting_email';
     else if(confirmed.some(i=>i.messageId==='S1'))c.workflow.stage='waiting_consent';
     else if(confirmed.some(i=>i.messageId==='S6'))c.workflow.stage='waiting_clarification';
   }
@@ -107,6 +108,31 @@ export function planWorkflow(c,a,policy,config,intents={}) {
   if(/(?:是|是不是|是否).{0,8}(?:AI|人工智能|机器人|自动回复)|真人吗/i.test(batch))
     return send('IDENTITY','我是协助招聘同事处理沟通的自动化助手，具体招聘安排会由招聘同事确认。',wf.stage);
   if(['rejected_screening','declined_test','do_not_contact','awaiting_review'].includes(wf.stage))return handoff('终态收到新消息');
+  if(policy.job?.status==='manual_portfolio'){
+    const job=policy.job, facts=a.portfolioFacts;
+    if(job.delivery!=='automatic'||!facts)return handoff('作品岗位需人工核实');
+    if(/全职|社招|正式岗/.test(batch))return handoff('候选人提到正式岗位，请核对申请方向');
+    const templates=portfolioTemplates(job.prompt);
+    if(c.pendingAttachmentGuidance)return send('S7',templates.S6,c.pendingAttachmentGuidance.nextStage);
+    if(c.detail?.attachmentRequests?.some(r=>r.status==='pending'))return {type:'reject_attachment',messageId:'S7',text:templates.S6,nextStage:wf.stage};
+    if(facts.attachment)return handoff('请核实聊天附件请求');
+    if(wf.stage==='waiting_email')return {type:'wait',reason:'等待人工核对简历和作品集'};
+    if(!['screening','waiting_clarification','waiting_reply'].includes(wf.stage))return handoff('请核对原会话的流程阶段');
+    const {step,note}=screenPortfolio(job,facts,c.clarificationCount>0);
+    if(step==='wait')return {type:'wait',reason:note};
+    if(step==='S7')return handoff(note);
+    if(step==='S5'){
+      const missing=[!facts.enrollment&&'目前是否在读',!facts.year&&'预计毕业年份'].filter(Boolean);
+      return send('S6',templates.S5+(missing.length?'也请补充'+missing.join('和')+'。':''),'waiting_clarification');
+    }
+    if(step==='S3'||step==='S4'){
+      const mixedTitle=/可接受实习生/.test(c.jobTitle);
+      const seeksInternship=(c.messages||[]).some(m=>m.direction==='incoming'&&/(应聘|找|申请|想做|求职|考虑).{0,10}实习/.test(m.text));
+      if(mixedTitle&&!seeksInternship)return handoff('请确认候选人应聘实习岗还是正式岗');
+      return send('S4',templates[step],'rejected_screening');
+    }
+    return {...send('PORTFOLIO_INVITE',templates.S2,'waiting_email'),portfolioJobId:job.id,screening:{outcome:'pass',reason:note}};
+  }
   if(policy.job?.status==='dynamic' && (c.pendingAttachmentGuidance || c.detail?.attachmentRequests?.some(r=>r.status==='pending')))return handoff('动态岗位收到附件请求，请人工核实投递渠道');
   if(c.pendingAttachmentGuidance)return send('S7',text('S7',{EMAIL:policy.rules.questionnaire.collection_email}),c.pendingAttachmentGuidance.nextStage);
   if((c.detail?.attachmentRequests||[]).some(r=>r.status==='pending'))return {type:'reject_attachment',messageId:'S7',text:text('S7',{EMAIL:policy.rules.questionnaire.collection_email}),nextStage:wf.stage};

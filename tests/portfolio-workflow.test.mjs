@@ -1,3 +1,5 @@
+import {planWorkflow,confirmWorkflowSend} from '../src/recruiting-workflow.mjs';
+import {saveJobProfiles,readJobProfiles} from '../src/job-settings.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
@@ -82,4 +84,29 @@ test('S7 preempts attachment, manual resolution and terminal attachment handling
   await f.change('attachment');
   assert.equal(f.row.stage,'婉拒-专业');
   assert.equal(f.row.pending,null);
+});
+
+test('portfolio title binding can be enabled and disabled; BOSS uses only the portfolio workflow',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'portfolio-binding-'));
+  t.after(()=>rm(root,{recursive:true,force:true}));
+  const path=join(root,'jobs.json'),title='角色原画师（可接受实习生）';
+  const {revision}=await readJobProfiles(path);
+  const automatic={...job,delivery:'automatic',acceptedTitles:[title]};
+  const saved=await saveJobProfiles(path,{revision,job:automatic});
+  const policy={job:saved.jobs.find(j=>j.id===job.id)};
+  const c={id:'art',jobTitle:title,messages:[{direction:'incoming',text:'你好，我找原画实习'}]};
+  const plan=facts=>planWorkflow(c,{portfolioFacts:facts,concern:{kind:'none'}},policy,{});
+  const ask=plan({});
+  assert.equal(ask.messageId,'S6');
+  confirmWorkflowSend({conversations:{art:c}},'art',ask,'ask');
+  assert.equal(plan({}).type,'wait');
+  assert.equal(plan({...qualified,major:val('艺术与科技')}).type,'handoff');
+  assert.equal(plan({...qualified,year:val('2026')}).nextStage,'rejected_screening');
+  const invite=plan(qualified);
+  assert.match(invite.text,/zhaopin@youkia\.com/);
+  assert.equal(invite.messageId,'PORTFOLIO_INVITE');
+  confirmWorkflowSend({conversations:{art:c}},'art',invite,'invite');
+  assert.equal(plan(qualified).type,'wait');
+  const manual=await saveJobProfiles(path,{revision:saved.revision,job:{...automatic,delivery:'manual',acceptedTitles:[]}});
+  assert.deepEqual(manual.jobs.find(j=>j.id===job.id).acceptedTitles,[]);
 });
