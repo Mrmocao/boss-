@@ -1,3 +1,5 @@
+import {createHash} from 'node:crypto';
+export const conversationRef=(accountId,id)=>createHash('sha256').update(['boss',accountId,id].join('|')).digest('hex').slice(0,32);
 const day=ms=>new Date(ms+8*3600000).toISOString().slice(0,10);
 const valid=v=>typeof v==='string'&&Number.isFinite(Date.parse(v));
 const terminal=new Set(['rejected_screening','declined_test','lost','do_not_contact','stopped']);

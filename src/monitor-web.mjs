@@ -10,7 +10,7 @@ import {pathToFileURL} from 'node:url';
 import {randomBytes} from 'node:crypto';
 import {monitorRoot,readStatus,queueCommand} from './monitor-daemon.mjs';
 import {isRecentRow} from './recent-conversations.mjs';
-import {buildOperations} from './dashboard-metrics.mjs';
+import {buildOperations,conversationRef} from './dashboard-metrics.mjs';
 import {readDashboardSettings,saveAssessmentSettings,resolveSkillConfig} from './dashboard-settings.mjs';
 import {handoffReviewAt} from './handoff-recovery.mjs';
 import {buildAiAccessGuide} from './ai-access-guide.mjs';
@@ -27,7 +27,7 @@ export function buildDashboardPayload(state,status){
   const statsById=new Map(operations.conversations.map(c=>[c.id,c]));
   const conversations=Object.values(state?.conversations||{}).filter(c=>c.admitted!==false).map(c=>({
     ...statsById.get(c.id),recent:isRecentRow(c.row,recentConfig,Date.now(),c),
-    id:c.id,name:c.name,jobTitle:c.jobTitle,status:c.status,humanHandoff:!!c.human_handoff,
+    id:c.id,conversationRef:conversationRef(accountId,c.id),name:c.name,jobTitle:c.jobTitle,status:c.status,humanHandoff:!!c.human_handoff,
     handoff:{...c.handoff,reason:c.handoff?.reason||c.handoffReason,autoReviewAt:c.human_handoff&&state.runtime?.handoffAutoResumeEnabled?handoffReviewAt(c,state.runtime):null},fingerprint:c.fingerprint,quietUntil:c.pendingAt?c.pendingAt+30000:null,
     clarificationCount:Number(c.clarificationCount)||0,lastMessage:(c.messages||[]).findLast(m=>['incoming','outgoing','unknown'].includes(m.direction))||null,
     messages:(c.messages||[]).slice(-15).map(m=>({direction:m.direction,text:m.text||m.displayText,observedTime:m.observedTime})),

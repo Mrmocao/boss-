@@ -2,7 +2,7 @@ import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {createHash,timingSafeEqual,randomUUID} from 'node:crypto';
-import {buildOperations} from './dashboard-metrics.mjs';
+import {buildOperations,conversationRef} from './dashboard-metrics.mjs';
 import {handoffReviewAt} from './handoff-recovery.mjs';
 import {projectRoot} from './config.mjs';
 import {monitorRoot as defaultMonitorRoot} from './monitor-daemon.mjs';
@@ -57,7 +57,7 @@ export function buildAutomationSnapshot({state={},monitor,supervisor},now=Date.n
  const scope={platformId:'boss',accountId};
  const stageValues=['screening','waiting_reply','waiting_consent','waiting_clarification','test_pending','waiting_email','submission_incomplete','awaiting_review','assessment_file_sent','rejected_screening','declined_test','lost','do_not_contact'];
  const rows=Object.values(state.conversations||{}).filter(c=>c.admitted!==false).map(c=>{
-  const ref=digest(`boss|${accountId}|${c.id}`).slice(0,32);
+  const ref=conversationRef(accountId,c.id);
   const last=(c.messages||[]).findLast(m=>['incoming','outgoing','unknown'].includes(m.direction));
   return {...scope,conversationRef:ref,stage:label(c.workflow?.stage||c.status,stageValues),status:label(c.status,[...stageValues,'human_review','chatting','pending_information','draft_ready','blocked_config','stopped']),
     humanHandoff:!!c.human_handoff,category:c.human_handoff?handoffCategory(c):null,
